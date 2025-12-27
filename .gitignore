@@ -40,3 +40,4 @@ test-results/
 # --- Environment Variables ---
 .env
 .env.local
+public/

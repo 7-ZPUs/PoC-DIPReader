@@ -1,0 +1,51 @@
+<div class="container">
+<div class="sidebar">
+    <h3>Esplora DIP</h3>
+    <!-- debug 
+    <div style="font-size: 10px; color: red; background: #eee; padding: 5px;">
+        DEBUG DATI: {{ fileTree.length }} nodi
+        <pre>{{ fileTree | json }}</pre>
+    </div>
+    -->
+    <ul>
+      <ng-container *ngTemplateOutlet="recursiveList; context:{ $implicit: fileTree }"></ng-container>
+    </ul>
+  </div>
+
+  <div class="main">
+    <div *ngIf="selectedFile; else noSelect">
+      <h2>{{ selectedFile.name }}</h2>
+      <button (click)="openFile(selectedFile!)">Apri File Originale</button>
+      
+      <div *ngIf="metadata" class="metadata-box">
+        <h3>Metadati Archivistici</h3>
+        <p><strong>UUID Documento:</strong> {{ metadata?.ArchimemoData?.DocumentInformation?.DocumentUUID }}</p>
+        <p><strong>Data Preservazione:</strong> {{ metadata?.ArchimemoData?.DocumentInformation?.PreservationProcessDate }}</p>
+        <p><strong>Dimensione Totale:</strong> {{ metadata?.ArchimemoData?.DocumentInformation?.TotalSize['#text'] }} 
+           {{ metadata?.ArchimemoData?.DocumentInformation?.TotalSize['@_unit'] }}</p>
+        
+        <h4>File Associati</h4>
+        <ul>
+          <li *ngFor="let f of getFilesList(metadata?.ArchimemoData?.FileInformation)">
+            {{ f.FileLocalName }} ({{ f.FileSize['#text'] }} bytes) - 
+            <em>{{ f['@_isPrimary'] ? 'Primario' : 'Allegato' }}</em>
+          </li>
+        </ul>
+      </div>
+    </div>
+    <ng-template #noSelect>
+      <p class="placeholder">Seleziona un file per vedere i dettagli.</p>
+    </ng-template>
+  </div>
+</div>
+
+<ng-template #recursiveList let-nodes>
+  <li *ngFor="let node of nodes">
+    <span (click)="handleNodeClick(node)" [class.is-folder]="node.type === 'folder'">
+      {{ node.type === 'folder' ? '📁' : '📄' }} {{ node.name }}
+    </span>
+    <ul *ngIf="node.type === 'folder' && node.expanded">
+      <ng-container *ngTemplateOutlet="recursiveList; context:{ $implicit: node.children }"></ng-container>
+    </ul>
+  </li>
+</ng-template>

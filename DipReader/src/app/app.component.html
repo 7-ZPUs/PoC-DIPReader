@@ -17,20 +17,17 @@
       <h2>{{ selectedFile.name }}</h2>
       <button (click)="openFile(selectedFile!)">Apri File Originale</button>
       
-      <div *ngIf="metadata" class="metadata-box">
-        <h3>Metadati Archivistici</h3>
-        <p><strong>UUID Documento:</strong> {{ metadata?.ArchimemoData?.DocumentInformation?.DocumentUUID }}</p>
-        <p><strong>Data Preservazione:</strong> {{ metadata?.ArchimemoData?.DocumentInformation?.PreservationProcessDate }}</p>
-        <p><strong>Dimensione Totale:</strong> {{ metadata?.ArchimemoData?.DocumentInformation?.TotalSize['#text'] }} 
-           {{ metadata?.ArchimemoData?.DocumentInformation?.TotalSize['@_unit'] }}</p>
-        
-        <h4>File Associati</h4>
-        <ul>
-          <li *ngFor="let f of getFilesList(metadata?.ArchimemoData?.FileInformation)">
-            {{ f.FileLocalName }} ({{ f.FileSize['#text'] }} bytes) - 
-            <em>{{ f['@_isPrimary'] ? 'Primario' : 'Allegato' }}</em>
-          </li>
-        </ul>
+      <!-- Mostra un messaggio di errore se il caricamento dei metadati fallisce -->
+      <div *ngIf="metadata?.error" class="metadata-box error-box">
+        <h3>Errore</h3>
+        <p>{{ metadata.error }}</p>
+      </div>
+      
+      <!-- Mostra i metadati solo se non ci sono errori e l'oggetto metadata esiste -->
+      <div *ngIf="metadata && !metadata.error" class="metadata-box">
+        <h3>Tutti i Metadati</h3>
+        <!-- Usiamo il pipe 'json' per visualizzare l'intero oggetto. È il modo più semplice e affidabile per vedere TUTTI i dati. -->
+        <pre>{{ metadata | json }}</pre>
       </div>
     </div>
     <ng-template #noSelect>

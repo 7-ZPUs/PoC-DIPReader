@@ -55,7 +55,7 @@ export class AppComponent implements OnInit {
     } else {
       // Imposta il file selezionato così la parte destra si aggiorna
       this.selectedFile = node;
-      // Recupera i metadati in modo SINCRONO dalla mappa già caricata nel servizio
+      // Recupera i metadati in modo SINCRONO dalla mappa
       this.metadata = this.dipService.getMetadataForFile(node.path);
       console.log(`Metadati per '${node.path}':`, this.metadata);
     }

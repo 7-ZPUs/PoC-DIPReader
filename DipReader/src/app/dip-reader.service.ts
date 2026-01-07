@@ -163,29 +163,45 @@ export class DipReaderService {
 
   private buildTree(logicalPaths: string[]): FileNode[] {
     const root: FileNode[] = [];
+    const folderMap = new Map<string, FileNode>();
+
     logicalPaths.forEach(logicalPath => {
       const parts = logicalPath.split('/');
       let currentLevel = root;
+      let currentPath = '';
 
       parts.forEach((part, index) => {
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
         const isFile = index === parts.length - 1;
-        let existingNode = currentLevel.find(n => n.name === part);
 
-        if (!existingNode) {
-          const newNode: FileNode = {
-            name: part,
-            // Il path del nodo è il percorso logico completo, usato come chiave
-            path: isFile ? logicalPath : '', 
-            type: isFile ? 'file' : 'folder',
-            children: [],
-            expanded: false
+        if (isFile) {
+          const metadata = this.metadataMap[logicalPath];
+          const docName = this.findValueByKey(metadata, 'NomeDelDocumento');
+          const displayName = docName || part;
+
+          const fileNode: FileNode = {
+            name: displayName,
+            path: logicalPath,
+            type: 'file',
+            children: [], // I file non hanno figli
           };
-          currentLevel.push(newNode);
-          existingNode = newNode;
-        }
+          currentLevel.push(fileNode);
+        } else { // È una cartella
+          let folderNode = folderMap.get(currentPath);
 
-        if (!isFile) {
-          currentLevel = existingNode.children;
+          if (!folderNode) {
+            folderNode = {
+              name: part,
+              path: currentPath, // Il percorso di una cartella è il suo percorso completo
+              type: 'folder',
+              children: [],
+              expanded: false,
+            };
+            folderMap.set(currentPath, folderNode);
+            currentLevel.push(folderNode);
+          }
+          // Scendi al livello successivo
+          currentLevel = folderNode.children;
         }
       });
     });
@@ -216,6 +232,42 @@ export class DipReaderService {
     // Costruisce il percorso finale secondo la struttura: {dir}/{basename}/{basename}.metadata.xml
     // L'uso di filter(p => p) previene la creazione di doppi slash se una parte è vuota.
     return [dirPath, baseFileName, `${baseFileName}.metadata.xml`].filter(p => p).join('/');
+  }
+
+  /**
+   * Cerca ricorsivamente un valore in un oggetto tramite la sua chiave.
+   * @param obj L'oggetto in cui cercare.
+   * @param key La chiave da trovare.
+   * @returns Il valore trovato o null.
+   */
+  private findValueByKey(obj: any, key: string): string | null {
+    if (!obj || typeof obj !== 'object') {
+      return null;
+    }
+
+    // Caso base: la chiave è una proprietà diretta dell'oggetto
+    if (key in obj) {
+      const value = obj[key];
+      // Il parser XML potrebbe creare un oggetto { '#text': 'valore' }
+      if (typeof value === 'object' && value !== null && '#text' in value) {
+        return value['#text'];
+      }
+      if (typeof value === 'string') {
+        return value;
+      }
+    }
+
+    // Passo ricorsivo: cerca nelle proprietà dell'oggetto
+    for (const k in obj) {
+      if (obj.hasOwnProperty(k)) {
+        const found = this.findValueByKey(obj[k], key);
+        if (found) {
+          return found;
+        }
+      }
+    }
+
+    return null;
   }
 
   private getText(obj: any): string | null {

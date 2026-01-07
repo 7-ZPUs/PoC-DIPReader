@@ -3,8 +3,9 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve",
-    "build": "ng build",
+    "generate-manifest": "node ./generate-manifest.js",
+    "start": "npm run generate-manifest && ng serve",
+    "build": "npm run generate-manifest && ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },
@@ -36,7 +37,7 @@
   },
   "devDependencies": {
     "@angular/build": "^21.0.4",
-    "@angular/cli": "^21.0.4",
+    "@angular/cli": "^20.0.6",
     "@angular/compiler-cli": "^21.0.0",
     "jsdom": "^27.1.0",
     "typescript": "~5.9.2",

@@ -32,58 +32,61 @@ export class DipReaderService {
    * @returns Un Observable che emette l'albero dei file (FileNode[]) una volta completato tutto il processo.
    */
   public loadPackage(): Observable<FileNode[]> {
-    // IL NOME ESATTO DEL TUO FILE
-    const fileName = 'DiPIndex.20251111.0413d8ee-8e82-4331-864e-7f8098bcc419.xml';
-    const basePath = fileName.includes('/') ? fileName.substring(0, fileName.lastIndexOf('/') + 1) : '';
+    const manifestPath = 'package-manifest.json'; // Il manifest è alla root
 
-    // --- FASE 1: Carica il file indice ---
-    return this.http.get(fileName, { responseType: 'text' }).pipe(
-      // --- FASE 2: Analizza l'indice e pianifica il caricamento dei metadati ---
-      switchMap(indexXmlStr => {
-        const indexJson = this.parseXml(indexXmlStr);
-        const { logicalPaths, loadPlan } = this.analyzeIndex(indexJson);
-
-        // Popola subito la mappa dei percorsi fisici
-        loadPlan.forEach(plan => {
-          this.physicalPathMap[plan.logicalPath] = basePath + plan.physicalDocPath;
-        });
-
-        if (loadPlan.length === 0) {
-          console.warn("Nessun file di metadati da caricare.");
-          this.metadataMap = {};
-          const tree = this.buildTree(logicalPaths);
-          return of(tree); // Restituisce l'albero direttamente se non ci sono metadati
+    // --- FASE 1: Carica il manifest per trovare il nome del file DiPIndex ---
+    return this.http.get<{ indexFile: string }>(manifestPath).pipe(
+      catchError(err => {
+        console.error(`ERRORE CRITICO: Impossibile caricare il file manifest da '${manifestPath}'.`,
+                      `Assicurarsi che i file del pacchetto DIP siano nella cartella 'public' e che lo script di build (npm start/build) sia stato eseguito.`, err);
+        return of({ indexFile: '' }); // Procede con un oggetto vuoto per un fallimento controllato
+      }),
+      // --- FASE 2: Usa il nome del file per caricare il vero DiPIndex.xml ---
+      switchMap(manifest => {
+        if (!manifest || !manifest.indexFile) {
+          console.error("Manifest non valido o 'indexFile' mancante.");
+          return of([]); // Restituisce un albero vuoto se il manifest è corrotto
         }
 
-        // --- FASE 3: Esegue il caricamento in parallelo dei metadati ---
-        const metadataRequests = loadPlan.map(plan =>
-          this.http.get(basePath + plan.physicalMetaPath, { responseType: 'text' }).pipe(
-            map(metaXmlStr => ({
-              logicalPath: plan.logicalPath,
-              metadata: this.parseXml(metaXmlStr)
-            })),
-            // Gestisce con grazia un 404 per un singolo file di metadati
-            catchError(err => {
-              console.warn(`Impossibile caricare i metadati da '${basePath + plan.physicalMetaPath}':`, err);
-              return of({ logicalPath: plan.logicalPath, metadata: { error: `File di metadati non trovato.` } });
-            })
-          )
-        );
+        const fileName = manifest.indexFile; // es. 'DiPIndex.123.xml'
+        const basePath = fileName.includes('/') ? fileName.substring(0, fileName.lastIndexOf('/') + 1) : '';
 
-        // --- FASE 4: Consolida i dati e restituisce il risultato finale ---
-        return forkJoin(metadataRequests).pipe(
-          map(results => {
-            // Costruisce la mappa dei metadati
-            const newMetadataMap: { [key: string]: any } = {};
-            results.forEach(result => {
-              newMetadataMap[result.logicalPath] = result.metadata;
+        return this.http.get(fileName, { responseType: 'text' }).pipe(
+          // --- FASE 3: Analizza l'indice e pianifica il caricamento dei metadati ---
+          switchMap(indexXmlStr => {
+            const indexJson = this.parseXml(indexXmlStr);
+            const { logicalPaths, loadPlan } = this.analyzeIndex(indexJson);
+
+            // Popola subito la mappa dei percorsi fisici
+            loadPlan.forEach(plan => {
+              this.physicalPathMap[plan.logicalPath] = basePath + plan.physicalDocPath;
             });
-            this.metadataMap = newMetadataMap;
-            console.log("Mappa dei metadati costruita dinamicamente:", this.metadataMap);
 
-            // Costruisce l'albero e lo restituisce al componente
-            const tree = this.buildTree(logicalPaths);
-            return tree;
+            if (loadPlan.length === 0) {
+              console.warn("Nessun file di metadati da caricare.");
+              this.metadataMap = {};
+              return of(this.buildTree(logicalPaths));
+            }
+
+            // --- FASE 4: Esegue il caricamento in parallelo dei metadati ---
+            const metadataRequests = loadPlan.map(plan =>
+              this.http.get(basePath + plan.physicalMetaPath, { responseType: 'text' }).pipe(
+                map(metaXmlStr => ({ logicalPath: plan.logicalPath, metadata: this.parseXml(metaXmlStr) })),
+                catchError(err => {
+                  console.warn(`Impossibile caricare i metadati da '${basePath + plan.physicalMetaPath}':`, err);
+                  return of({ logicalPath: plan.logicalPath, metadata: { error: `File di metadati non trovato.` } });
+                })
+              )
+            );
+
+            // --- FASE 5: Consolida i dati e restituisce il risultato finale ---
+            return forkJoin(metadataRequests).pipe(
+              map(results => {
+                this.metadataMap = Object.fromEntries(results.map(r => [r.logicalPath, r.metadata]));
+                console.log("Mappa dei metadati costruita dinamicamente:", this.metadataMap);
+                return this.buildTree(logicalPaths);
+              })
+            );
           })
         );
       })

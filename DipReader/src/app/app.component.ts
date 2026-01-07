@@ -46,7 +46,7 @@ export class AppComponent implements OnInit {
     });
   }
 
-  handleNodeClick(node: FileNode) {
+  async handleNodeClick(node: FileNode) {
     if (node.type === 'folder') {
       node.expanded = !node.expanded;
       // Deseleziona il file quando si interagisce con le cartelle
@@ -55,22 +55,26 @@ export class AppComponent implements OnInit {
     } else {
       // Imposta il file selezionato così la parte destra si aggiorna
       this.selectedFile = node;
-      // Recupera i metadati in modo SINCRONO dalla mappa
-      this.metadata = this.dipService.getMetadataForFile(node.path);
+      // Recupera i metadati in modo ASINCRONO dal database
+      this.metadata = await this.dipService.getMetadataForFile(node.path);
       console.log(`Metadati per '${node.path}':`, this.metadata);
     }
   }
 
   // --- FUNZIONI REINSERITE PER EVITARE L'ERRORE ---
-  openFile(node: FileNode) {
+  async openFile(node: FileNode) {
     // Recupera il percorso fisico corretto dal servizio
-    const physicalPath = this.dipService.getPhysicalPathForFile(node.path);
+    const physicalPath = await this.dipService.getPhysicalPathForFile(node.path);
     if (physicalPath) {
       console.log(`Apertura percorso fisico: ${physicalPath}`);
       window.open(physicalPath, '_blank');
     } else {
       console.error(`Impossibile trovare il percorso fisico per il percorso logico: ${node.path}`);
     }
+  }
+
+  downloadDb() {
+    this.dipService.downloadDebugDb();
   }
 
   getFilesList(fileInfo: any): any[] {

@@ -1,8 +1,9 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { XMLParser } from 'fast-xml-parser';
-import { map, switchMap, catchError } from 'rxjs/operators';
-import { Observable, forkJoin, of } from 'rxjs';
+import { map, catchError } from 'rxjs/operators';
+import { Observable, forkJoin, of, from, lastValueFrom } from 'rxjs';
+import { DatabaseService } from './database.service';
 
 export interface FileNode {
   name: string;
@@ -19,96 +20,98 @@ export class DipReaderService {
     attributeNamePrefix: '@_'
   });
 
-  private metadataMap: { [logicalPath: string]: any } = {};
-  private physicalPathMap: { [logicalPath: string]: string } = {};
-  
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private dbService: DatabaseService) {}
 
   /**
    * Orchestratore principale. Carica dinamicamente l'intero pacchetto DIP.
-   * 1. Legge DiPIndex.xml per capire la struttura.
-   * 2. Carica in parallelo tutti i file .metadata.xml necessari usando i percorsi fisici corretti.
-   * 3. Costruisce in memoria sia l'albero dei file che le mappe per i metadati e i percorsi fisici.
+   * Verifica se il DB è popolato; se no, esegue l'importazione dai file XML.
    * @returns Un Observable che emette l'albero dei file (FileNode[]) una volta completato tutto il processo.
    */
   public loadPackage(): Observable<FileNode[]> {
-    const manifestPath = 'package-manifest.json'; // Il manifest è alla root
+    return from(this.loadPackageAsync());
+  }
 
-    // --- FASE 1: Carica il manifest per trovare il nome del file DiPIndex ---
-    return this.http.get<{ indexFile: string }>(manifestPath).pipe(
-      catchError(err => {
-        console.error(`ERRORE CRITICO: Impossibile caricare il file manifest da '${manifestPath}'.`,
-                      `Assicurarsi che i file del pacchetto DIP siano nella cartella 'public' e che lo script di build (npm start/build) sia stato eseguito.`, err);
-        return of({ indexFile: '' }); // Procede con un oggetto vuoto per un fallimento controllato
-      }),
-      // --- FASE 2: Usa il nome del file per caricare il vero DiPIndex.xml ---
-      switchMap(manifest => {
-        if (!manifest || !manifest.indexFile) {
-          console.error("Manifest non valido o 'indexFile' mancante.");
-          return of([]); // Restituisce un albero vuoto se il manifest è corrotto
-        }
+  private async loadPackageAsync(): Promise<FileNode[]> {
+    await this.dbService.initializeDb();
 
-        const fileName = manifest.indexFile; // es. 'DiPIndex.123.xml'
-        const basePath = fileName.includes('/') ? fileName.substring(0, fileName.lastIndexOf('/') + 1) : '';
+    const manifestPath = 'package-manifest.json';
+    let manifest: { indexFile: string } | undefined;
 
-        return this.http.get(fileName, { responseType: 'text' }).pipe(
-          // --- FASE 3: Analizza l'indice e pianifica il caricamento dei metadati ---
-          switchMap(indexXmlStr => {
-            const indexJson = this.parseXml(indexXmlStr);
-            const { logicalPaths, loadPlan } = this.analyzeIndex(indexJson);
+    try {
+      manifest = await lastValueFrom(this.http.get<{ indexFile: string }>(manifestPath));
+    } catch (err) {
+      console.error(`ERRORE CRITICO: Impossibile caricare il file manifest da '${manifestPath}'.`, err);
+      return [];
+    }
 
-            // Popola subito la mappa dei percorsi fisici
-            loadPlan.forEach(plan => {
-              this.physicalPathMap[plan.logicalPath] = basePath + plan.physicalDocPath;
-            });
+    if (!manifest || !manifest.indexFile) {
+      console.error("Manifest non valido o 'indexFile' mancante.");
+      return [];
+    }
 
-            if (loadPlan.length === 0) {
-              console.warn("Nessun file di metadati da caricare.");
-              this.metadataMap = {};
-              return of(this.buildTree(logicalPaths));
-            }
+    const fileName = manifest.indexFile;
 
-            // --- FASE 4: Esegue il caricamento in parallelo dei metadati ---
-            const metadataRequests = loadPlan.map(plan =>
-              this.http.get(basePath + plan.physicalMetaPath, { responseType: 'text' }).pipe(
-                map(metaXmlStr => ({ logicalPath: plan.logicalPath, metadata: this.parseXml(metaXmlStr) })),
-                catchError(err => {
-                  console.warn(`Impossibile caricare i metadati da '${basePath + plan.physicalMetaPath}':`, err);
-                  return of({ logicalPath: plan.logicalPath, metadata: { error: `File di metadati non trovato.` } });
-                })
-              )
-            );
+    // Controlla se il DB è già popolato per questa versione
+    const isPopulated = await this.dbService.isPopulated(fileName);
+    if (isPopulated) {
+      console.log('Database già popolato. Caricamento veloce da SQLite...');
+      return this.dbService.getTreeFromDb();
+    }
 
-            // --- FASE 5: Consolida i dati e restituisce il risultato finale ---
-            return forkJoin(metadataRequests).pipe(
-              map(results => {
-                this.metadataMap = Object.fromEntries(results.map(r => [r.logicalPath, r.metadata]));
-                console.log("Mappa dei metadati costruita dinamicamente:", this.metadataMap);
-                return this.buildTree(logicalPaths);
-              })
-            );
+    console.log('Database non aggiornato. Avvio importazione da XML...');
+    return this.importFromXml(fileName);
+  }
+
+  private async importFromXml(fileName: string): Promise<FileNode[]> {
+    const basePath = fileName.includes('/') ? fileName.substring(0, fileName.lastIndexOf('/') + 1) : '';
+    const indexXmlStr = await lastValueFrom(this.http.get(fileName, { responseType: 'text' }));
+
+    const indexJson = this.parseXml(indexXmlStr);
+    const { logicalPaths, loadPlan } = this.analyzeIndex(indexJson);
+
+    const physicalPathMap: { [key: string]: string } = {};
+    loadPlan.forEach(plan => {
+      physicalPathMap[plan.logicalPath] = basePath + plan.physicalDocPath;
+    });
+
+    let metadataMap: { [key: string]: any } = {};
+
+    if (loadPlan.length > 0) {
+      const metadataRequests = loadPlan.map(plan =>
+        this.http.get(basePath + plan.physicalMetaPath, { responseType: 'text' }).pipe(
+          map(metaXmlStr => ({ logicalPath: plan.logicalPath, metadata: this.parseXml(metaXmlStr) })),
+          catchError(err => {
+            console.warn(`Impossibile caricare i metadati da '${basePath + plan.physicalMetaPath}':`, err);
+            return of({ logicalPath: plan.logicalPath, metadata: { error: `File di metadati non trovato.` } });
           })
-        );
-      })
-    );
+        )
+      );
+
+      const results = await lastValueFrom(forkJoin(metadataRequests));
+      metadataMap = Object.fromEntries(results.map(r => [r.logicalPath, r.metadata]));
+    }
+
+    // Popola il database e restituisce l'albero
+    await this.dbService.populateDatabase(fileName, logicalPaths, metadataMap, physicalPathMap);
+    return this.dbService.getTreeFromDb();
   }
 
   /**
-   * Recupera i metadati per un file dalla mappa pre-caricata in memoria.
-   * @param logicalPath Il percorso logico del file, usato come chiave.
-   * @returns L'oggetto dei metadati.
+   * Recupera i metadati per un file dal database.
    */
-  public getMetadataForFile(logicalPath: string): any {
-    return this.metadataMap[logicalPath] || { error: 'Metadati non trovati nella mappa pre-caricata.' };
+  public async getMetadataForFile(logicalPath: string): Promise<any> {
+    return this.dbService.getMetadataFromDb(logicalPath);
   }
 
   /**
-   * Recupera il percorso fisico web-accessible per un file.
-   * @param logicalPath Il percorso logico del file, usato come chiave.
-   * @returns Il percorso fisico completo (es. 'mio_dip/documenti/file.pdf').
+   * Recupera il percorso fisico web-accessible per un file dal database.
    */
-  public getPhysicalPathForFile(logicalPath: string): string | undefined {
-    return this.physicalPathMap[logicalPath];
+  public async getPhysicalPathForFile(logicalPath: string): Promise<string | undefined> {
+    return this.dbService.getPhysicalPathFromDb(logicalPath);
+  }
+
+  public downloadDebugDb(): void {
+    this.dbService.exportDatabase();
   }
 
   // --- HELPERS PRIVATI ---
@@ -161,53 +164,6 @@ export class DipReaderService {
     return { logicalPaths, loadPlan };
   }
 
-  private buildTree(logicalPaths: string[]): FileNode[] {
-    const root: FileNode[] = [];
-    const folderMap = new Map<string, FileNode>();
-
-    logicalPaths.forEach(logicalPath => {
-      const parts = logicalPath.split('/');
-      let currentLevel = root;
-      let currentPath = '';
-
-      parts.forEach((part, index) => {
-        currentPath = currentPath ? `${currentPath}/${part}` : part;
-        const isFile = index === parts.length - 1;
-
-        if (isFile) {
-          const metadata = this.metadataMap[logicalPath];
-          const docName = this.findValueByKey(metadata, 'NomeDelDocumento');
-          const displayName = docName || part;
-
-          const fileNode: FileNode = {
-            name: displayName,
-            path: logicalPath,
-            type: 'file',
-            children: [], // I file non hanno figli
-          };
-          currentLevel.push(fileNode);
-        } else { // È una cartella
-          let folderNode = folderMap.get(currentPath);
-
-          if (!folderNode) {
-            folderNode = {
-              name: part,
-              path: currentPath, // Il percorso di una cartella è il suo percorso completo
-              type: 'folder',
-              children: [],
-              expanded: false,
-            };
-            folderMap.set(currentPath, folderNode);
-            currentLevel.push(folderNode);
-          }
-          // Scendi al livello successivo
-          currentLevel = folderNode.children;
-        }
-      });
-    });
-    return root;
-  }
-
   private parseXml(xmlStr: string): any {
     const cleanXml = xmlStr.replace(/<([a-zA-Z0-9]+):/g, '<').replace(/<\/([a-zA-Z0-9]+):/g, '</');
     return this.parser.parse(cleanXml);
@@ -232,42 +188,6 @@ export class DipReaderService {
     // Costruisce il percorso finale secondo la struttura: {dir}/{basename}/{basename}.metadata.xml
     // L'uso di filter(p => p) previene la creazione di doppi slash se una parte è vuota.
     return [dirPath, baseFileName, `${baseFileName}.metadata.xml`].filter(p => p).join('/');
-  }
-
-  /**
-   * Cerca ricorsivamente un valore in un oggetto tramite la sua chiave.
-   * @param obj L'oggetto in cui cercare.
-   * @param key La chiave da trovare.
-   * @returns Il valore trovato o null.
-   */
-  private findValueByKey(obj: any, key: string): string | null {
-    if (!obj || typeof obj !== 'object') {
-      return null;
-    }
-
-    // Caso base: la chiave è una proprietà diretta dell'oggetto
-    if (key in obj) {
-      const value = obj[key];
-      // Il parser XML potrebbe creare un oggetto { '#text': 'valore' }
-      if (typeof value === 'object' && value !== null && '#text' in value) {
-        return value['#text'];
-      }
-      if (typeof value === 'string') {
-        return value;
-      }
-    }
-
-    // Passo ricorsivo: cerca nelle proprietà dell'oggetto
-    for (const k in obj) {
-      if (obj.hasOwnProperty(k)) {
-        const found = this.findValueByKey(obj[k], key);
-        if (found) {
-          return found;
-        }
-      }
-    }
-
-    return null;
   }
 
   private getText(obj: any): string | null {

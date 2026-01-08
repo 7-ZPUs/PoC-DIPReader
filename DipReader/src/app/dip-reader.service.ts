@@ -71,7 +71,7 @@ export class DipReaderService {
 
     const physicalPathMap: { [key: string]: string } = {};
     loadPlan.forEach(plan => {
-      physicalPathMap[plan.logicalPath] = basePath + plan.physicalDocPath;
+      physicalPathMap[plan.logicalPath] = this.encodePath(basePath + plan.physicalDocPath);
     });
 
     let metadataMap: { [key: string]: any } = {};
@@ -89,6 +89,35 @@ export class DipReaderService {
 
       const results = await lastValueFrom(forkJoin(metadataRequests));
       metadataMap = Object.fromEntries(results.map(r => [r.logicalPath, r.metadata]));
+
+      // Aggiorna i percorsi fisici se il nome del file reale è presente nei metadati
+      results.forEach(r => {
+        if (r.metadata && !r.metadata.error) {
+          // Cerca chiavi comuni per il nome del file nei metadati
+          let realFileName = this.dbService.findValueByKey(r.metadata, '@_originalFileName') ||
+                             this.dbService.findValueByKey(r.metadata, 'NomeFile') || 
+                             this.dbService.findValueByKey(r.metadata, 'File') ||
+                             this.dbService.findValueByKey(r.metadata, 'NomeOriginale');
+
+          // Fallback: usa NomeDelDocumento se sembra un file (ha un'estensione)
+          if (!realFileName) {
+            const docName = this.dbService.findValueByKey(r.metadata, 'NomeDelDocumento');
+            if (docName && /\.[a-zA-Z0-9]{3,4}$/.test(docName)) {
+              realFileName = docName;
+            }
+          }
+
+          if (realFileName) {
+            const plan = loadPlan.find(p => p.logicalPath === r.logicalPath);
+            if (plan) {
+              // Costruisce il percorso usando la cartella del file metadata + il nome file reale
+              const metaDir = plan.physicalMetaPath.substring(0, plan.physicalMetaPath.lastIndexOf('/'));
+              const fullPath = basePath + (metaDir ? metaDir + '/' : '') + realFileName.trim();
+              physicalPathMap[r.logicalPath] = this.encodePath(fullPath);
+            }
+          }
+        }
+      });
     }
 
     // Popola il database e restituisce l'albero
@@ -110,8 +139,57 @@ export class DipReaderService {
     return this.dbService.getPhysicalPathFromDb(logicalPath);
   }
 
+  /**
+   * Ottiene la lista delle chiavi di metadati disponibili per il filtraggio.
+   */
+  public async getAvailableMetadataKeys(): Promise<string[]> {
+    return this.dbService.getAvailableMetadataKeys();
+  }
+
+  /**
+   * Esegue una ricerca complessa.
+   */
+  public async searchDocuments(nameQuery: string, filters: { key: string, value: string }[]): Promise<FileNode[]> {
+    return this.dbService.searchDocuments(nameQuery, filters);
+  }
+
   public downloadDebugDb(): void {
     this.dbService.exportDatabase();
+  }
+
+  /**
+   * Verifica l'integrità del file calcolando l'hash SHA-256 e confrontandolo con i metadati.
+   */
+  public async verifyFileIntegrity(logicalPath: string): Promise<{ valid: boolean, calculated: string, expected: string }> {
+    const physicalPath = await this.getPhysicalPathForFile(logicalPath);
+    if (!physicalPath) throw new Error('File fisico non trovato.');
+
+    const metadata = await this.getMetadataForFile(logicalPath);
+    // Cerca l'hash nei metadati. La chiave specifica è "Impronta".
+    // Il path completo è solitamente: Document.DocumentoAmministrativoInformatico.IdDoc.ImprontaCrittograficaDelDocumento.Impronta
+    const expectedHash = this.dbService.findValueByKey(metadata, 'Impronta');
+
+    if (!expectedHash) {
+      throw new Error('Impronta crittografica (Hash) non trovata nei metadati.');
+    }
+
+    // Scarica il file come blob/buffer per calcolare l'hash
+    const response = await fetch(physicalPath);
+    if (!response.ok) {
+      throw new Error(`Impossibile leggere il file per la verifica: ${response.statusText}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+
+    // Calcola SHA-256 usando le API native del browser (SubtleCrypto)
+    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const calculatedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+    return {
+      valid: calculatedHash.toLowerCase() === expectedHash.toLowerCase(),
+      calculated: calculatedHash,
+      expected: expectedHash
+    };
   }
 
   // --- HELPERS PRIVATI ---
@@ -197,4 +275,11 @@ export class DipReaderService {
     return null;
   }
 
+  /**
+   * Codifica i segmenti del percorso per renderli validi negli URL (gestione spazi, accenti, ecc.)
+   * Mantiene i separatori '/' intatti.
+   */
+  private encodePath(path: string): string {
+    return path.split('/').map(p => encodeURIComponent(p)).join('/');
+  }
 }

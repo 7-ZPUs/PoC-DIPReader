@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DipReaderService, FileNode } from './dip-reader.service';
 import { MetadataViewerComponent } from './metadata-viewer.component';
+import { Filter } from './filter-manager';
 
 @Component({
   selector: 'app-root',
@@ -16,13 +17,22 @@ import { MetadataViewerComponent } from './metadata-viewer.component';
         <div class="search-box">
           <input type="text" [(ngModel)]="searchName" placeholder="Cerca nome file..." (keyup.enter)="performSearch()" class="search-input">
           
+          <!-- Intestazione Filtri Globali -->
+          <div class="filter-header">
+            <span class="filter-title">🔍 Filtri Globali</span>
+            <span class="filter-info" title="I filtri si applicano a TUTTI i file in modo uniforme">ⓘ</span>
+          </div>
+          
+          <!-- Riga Filtri Dinamica -->
           <div *ngFor="let filter of filters; let i = index" class="filter-row">
             <select [(ngModel)]="filter.key" class="filter-select">
               <option value="" disabled selected>Seleziona campo...</option>
-              <option *ngFor="let key of availableKeys" [value]="key">{{ key }}</option>
+              <optgroup *ngFor="let group of groupedFilterKeys" [label]="group.groupLabel">
+                <option *ngFor="let opt of group.options" [value]="opt.value">{{ opt.label }}</option>
+              </optgroup>
             </select>
-            <input type="text" [(ngModel)]="filter.value" placeholder="Valore..." class="filter-input">
-            <button (click)="removeFilter(i)" class="btn-icon remove">×</button>
+            <input type="text" [(ngModel)]="filter.value" placeholder="Contiene..." class="filter-input">
+            <button (click)="removeFilter(i)" class="btn-icon remove" title="Rimuovi filtro">×</button>
           </div>
 
           <div class="search-actions">
@@ -90,8 +100,21 @@ import { MetadataViewerComponent } from './metadata-viewer.component';
     
     /* Stili Ricerca */
     .search-box { background: #e9ecef; padding: 10px; border-radius: 4px; margin-bottom: 10px; }
-    .search-input, .filter-select, .filter-input { width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; }
+    .search-input, .filter-select, .filter-input { width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; font-size: 0.85rem; }
+    
+    /* Stili optgroup nella select */
+    .filter-select optgroup { font-weight: bold; color: #333; padding: 5px; }
+    .filter-select option { padding-left: 15px; color: #333; font-weight: normal; }
+    
+    /* Header Filtri Globali */
+    .filter-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-weight: 600; color: #495057; }
+    .filter-title { font-size: 0.9rem; }
+    .filter-info { cursor: help; color: #0066cc; font-weight: bold; font-size: 0.9rem; opacity: 0.7; }
+    .filter-info:hover { opacity: 1; }
+    
     .filter-row { display: flex; gap: 5px; margin-bottom: 5px; align-items: center; }
+    .filter-select { flex: 1; min-width: 0; }
+    .filter-input { flex: 1; min-width: 0; }
     .filter-select { flex: 1; min-width: 0; }
     .filter-input { flex: 1; min-width: 0; }
     .search-actions { display: flex; justify-content: space-between; margin-top: 5px; }
@@ -118,7 +141,12 @@ export class AppComponent implements OnInit {
   // Proprietà per la ricerca
   searchName = '';
   availableKeys: string[] = [];
-  filters: { key: string, value: string }[] = [];
+  groupedFilterKeys: Array<{
+    groupLabel: string;
+    groupPath: string;
+    options: Array<{ value: string; label: string }>;
+  }> = [];
+  filters: Filter[] = [];
   isSearching = false;
   integrityStatus: 'none' | 'loading' | 'valid' | 'invalid' | 'error' = 'none';
   // -------------------------------------------------
@@ -144,6 +172,8 @@ export class AppComponent implements OnInit {
 
   async loadSearchKeys() {
     this.availableKeys = await this.dipService.getAvailableMetadataKeys();
+    this.groupedFilterKeys = await this.dipService.getGroupedFilterKeys();
+    console.log('Filtri raggruppati caricati:', this.groupedFilterKeys.length, 'gruppi');
   }
 
   addFilter() {

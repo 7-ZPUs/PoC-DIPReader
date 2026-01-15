@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 // Importiamo SOLO il tipo per TypeScript, così Vite non tocca il pacchetto a runtime
 import type sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 import { FileNode } from './dip-reader.service';
+import { FilterManager, Filter } from './filter-manager';
 
 type Sqlite3 = Awaited<ReturnType<typeof sqlite3InitModule>>;
 type DB = InstanceType<Sqlite3['oo1']['DB']>;
@@ -217,51 +218,94 @@ export class DatabaseService {
 
   /**
    * Recupera tutte le chiavi univoche presenti nei metadati per popolare i filtri.
+   * 
+   * Usa FilterManager per estrarre chiavi FLATTENED dai metadati completi.
+   * Invece di chiavi come "metadata_attributes_key_1", restituisce chiavi pulite come:
+   * - isPrimary
+   * - fileName
+   * - documentType
+   * etc.
+   * 
+   * Questo permette all'utente di usare filtri globali più intuitivi.
    */
   async getAvailableMetadataKeys(): Promise<string[]> {
     const db = this.db;
     if (!db) return [];
+
+    // Recupera TUTTI i metadati dal database per estrarre le chiavi flattened
     const rows = db.exec({
-      sql: 'SELECT DISTINCT key FROM metadata_attributes ORDER BY key',
+      sql: 'SELECT data FROM raw_metadata WHERE data IS NOT NULL',
       rowMode: 'array',
       returnValue: 'resultRows'
-    });
-    // rows è un array di array (es. [['Author'], ['Date']])
-    return rows.map((r: any) => r[0] as string);
+    }) as [string][];
+
+    const metadataList = rows
+      .map(r => {
+        try {
+          return JSON.parse(r[0]);
+        } catch {
+          return {};
+        }
+      });
+
+    // Usa FilterManager per estrarre chiavi flattened univoche
+    const flattenedKeys = FilterManager.extractAvailableKeys(metadataList);
+
+    console.log('[DatabaseService] Chiavi metadati flattened disponibili:', flattenedKeys.length);
+    return flattenedKeys;
   }
 
   /**
-   * Cerca documenti combinando ricerca per nome e filtri sui metadati.
+   * Ottiene i filtri organizzati in gruppi per la visualizzazione optgroup.
+   * 
+   * Raggruppa i filtri per sezione gerarchica e mostra solo il nome significativo.
    */
-  async searchDocuments(nameQuery: string, filters: { key: string, value: string }[]): Promise<FileNode[]> {
+  async getGroupedFilterKeys(): Promise<
+    {
+      groupLabel: string;
+      groupPath: string;
+      options: Array<{ value: string; label: string }>;
+    }[]
+  > {
+    const keys = await this.getAvailableMetadataKeys();
+    return FilterManager.groupKeysForSelect(keys);
+  }
+
+  /**
+   * Ottiene la mappa di consolidamento per i filtri.
+   * Usata internamente durante la ricerca per espandere filtri consolidati.
+   */
+  async getFilterConsolidationMap(): Promise<Map<string, string[]>> {
+    const keys = await this.getAvailableMetadataKeys();
+    return FilterManager.buildFilterConsolidationMap(keys);
+  }
+
+  /**
+   * Cerca documenti combinando ricerca per nome e filtri GLOBALI sui metadati.
+   * 
+   * I filtri sono ora GLOBALI: un singolo filtro "isPrimary" si applica a TUTTI i file,
+   * indipendentemente da dove la proprietà appaia nella struttura (fileinformation[0], [1], etc.)
+   * 
+   * Funzionamento:
+   * 1. Cerca i file per nome (se fornito)
+   * 2. Per ogni file trovato, recupera i metadati COMPLETI
+   * 3. Usa FilterManager per flattened i metadati e applicare i filtri globali
+   * 4. Restituisce solo i file che matchano TUTTI i criteri di filtro
+   */
+  async searchDocuments(nameQuery: string, filters: Filter[]): Promise<FileNode[]> {
     const db = this.db;
     if (!db) return [];
 
-    // Usa apici singoli per i letterali SQL standard
+    // Step 1: Trova i file per nome
     let sql = "SELECT logical_path, name FROM nodes WHERE type = 'file'";
     const params: string[] = [];
 
     if (nameQuery && nameQuery.trim() !== '') {
-      // Usa LOWER per rendere la ricerca case-insensitive in modo robusto
       sql += ' AND LOWER(name) LIKE LOWER(?)';
       params.push(`%${nameQuery.trim()}%`);
     }
 
-    // Aggiunge una condizione EXISTS per ogni filtro attivo (AND logico)
-    for (const filter of filters) {
-      if (filter.key && filter.value) {
-        sql += ` AND EXISTS (
-          SELECT 1 FROM metadata_attributes ma 
-          WHERE ma.logical_path = nodes.logical_path 
-          AND ma.key = ? 
-          AND LOWER(ma.value) LIKE LOWER(?)
-        )`;
-        params.push(filter.key);
-        params.push(`%${filter.value}%`);
-      }
-    }
-
-    console.log('[DatabaseService] Query Ricerca:', sql, 'Parametri:', params);
+    console.log('[DatabaseService] Query Ricerca (nome):', sql, 'Parametri:', params);
 
     const rows = db.exec({
       sql: sql,
@@ -270,10 +314,80 @@ export class DatabaseService {
       returnValue: 'resultRows'
     }) as { logical_path: string, name: string }[];
 
-    console.log('[DatabaseService] Risultati trovati:', rows.length);
+    console.log('[DatabaseService] File trovati per nome:', rows.length);
 
-    // Ricostruisce l'albero parziale con i risultati trovati
-    return this.buildTree(rows, true); // Passiamo true per espandere i risultati
+    // Step 2 & 3: Applica i filtri globali usando FilterManager
+    const filteredNodes: FileNode[] = [];
+
+    // Espandi i filtri consolidati
+    const consolidationMap = await this.getFilterConsolidationMap();
+    const expandedFilters = filters.map((filter) => {
+      // Se il filtro è un nome significativo (senza percorsi separati da .),
+      // e ha più fullPath associati, crea filtri per tutti
+      const associatedPaths = consolidationMap.get(filter.key);
+      
+      if (associatedPaths && associatedPaths.length > 1) {
+        // Ritorna un oggetto speciale che rappresenta "uno qualsiasi dei fullPath"
+        return {
+          ...filter,
+          _expandedPaths: associatedPaths // Marker interno per indicare che questo filtro deve essere applicato con OR logic
+        };
+      }
+      return filter;
+    });
+
+    for (const row of rows) {
+      const metadata = await this.getMetadataFromDb(row.logical_path);
+      
+      // Usa FilterManager per controllare se i metadati matchano i filtri
+      const flatMetadata = FilterManager.flattenMetadata(metadata);
+      
+      // Applica i filtri con OR logic per quelli espansi
+      let matchesAllFilters = true;
+      for (const filter of expandedFilters) {
+        const expandedFilter = filter as any;
+        if (expandedFilter._expandedPaths) {
+          // Per i filtri espansi, controlla se ALMENO UNO dei fullPath matcha
+          const matchesAny = expandedFilter._expandedPaths.some((fullPath: string) => {
+            return FilterManager.matchesFilters(flatMetadata, [{ key: fullPath, value: filter.value }]);
+          });
+          if (!matchesAny) {
+            matchesAllFilters = false;
+            break;
+          }
+        } else {
+          // Per i filtri normali, usa la logica AND
+          if (!FilterManager.matchesFilters(flatMetadata, [filter])) {
+            matchesAllFilters = false;
+            break;
+          }
+        }
+      }
+
+      if (matchesAllFilters && (expandedFilters.length === 0 || filters.length === 0)) {
+        // Se non ci sono filtri, includi comunque il file
+        matchesAllFilters = true;
+      } else if (matchesAllFilters) {
+        // File matcha tutti i filtri (con OR logic per quelli espansi)
+      } else {
+        // File non matcha
+        matchesAllFilters = false;
+      }
+
+      if (matchesAllFilters || filters.length === 0) {
+        filteredNodes.push({
+          name: row.name,
+          path: row.logical_path,
+          type: 'file',
+          children: []
+        });
+      }
+    }
+
+    console.log('[DatabaseService] Risultati dopo filtri globali:', filteredNodes.length);
+
+    // Ricostruisce l'albero parziale con i risultati filtrati
+    return this.buildTree(filteredNodes.map(n => ({ logical_path: n.path, name: n.name })), true);
   }
 
   /**

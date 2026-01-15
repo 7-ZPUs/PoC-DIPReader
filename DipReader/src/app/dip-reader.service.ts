@@ -4,6 +4,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { map, catchError } from 'rxjs/operators';
 import { Observable, forkJoin, of, from, lastValueFrom } from 'rxjs';
 import { DatabaseService } from './database.service';
+import { Filter } from './filter-manager';
 
 export interface FileNode {
   name: string;
@@ -147,9 +148,22 @@ export class DipReaderService {
   }
 
   /**
-   * Esegue una ricerca complessa.
+   * Ottiene i filtri organizzati in gruppi per optgroup.
    */
-  public async searchDocuments(nameQuery: string, filters: { key: string, value: string }[]): Promise<FileNode[]> {
+  public async getGroupedFilterKeys(): Promise<
+    {
+      groupLabel: string;
+      groupPath: string;
+      options: Array<{ value: string; label: string }>;
+    }[]
+  > {
+    return this.dbService.getGroupedFilterKeys();
+  }
+
+  /**
+   * Esegue una ricerca complessa con filtri globali.
+   */
+  public async searchDocuments(nameQuery: string, filters: Filter[]): Promise<FileNode[]> {
     return this.dbService.searchDocuments(nameQuery, filters);
   }
 

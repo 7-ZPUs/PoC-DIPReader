@@ -1,9 +1,12 @@
-import { Injectable } from '@angular/core';
+import { Injectable,Inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { XMLParser } from 'fast-xml-parser';
 import { map, catchError } from 'rxjs/operators';
 import { Observable, forkJoin, of, from, lastValueFrom } from 'rxjs';
 import { DatabaseService } from './database.service';
+
+import { SEARCH_ENGINE, IDipIndexService } from './search-engine.interface'; // Importa interfaccia e token
+
 
 export interface FileNode {
   name: string;
@@ -20,7 +23,10 @@ export class DipReaderService {
     attributeNamePrefix: '@_'
   });
 
-  constructor(private http: HttpClient, private dbService: DatabaseService) {}
+  constructor(
+    private http: HttpClient, 
+    @Inject(SEARCH_ENGINE) private dbService: IDipIndexService 
+  ) {}
 
   /**
    * Orchestratore principale. Carica dinamicamente l'intero pacchetto DIP.
@@ -129,14 +135,14 @@ export class DipReaderService {
    * Recupera i metadati per un file dal database.
    */
   public async getMetadataForFile(logicalPath: string): Promise<any> {
-    return this.dbService.getMetadataFromDb(logicalPath);
+    return this.dbService.getMetadataForFile(logicalPath);
   }
 
   /**
    * Recupera il percorso fisico web-accessible per un file dal database.
    */
   public async getPhysicalPathForFile(logicalPath: string): Promise<string | undefined> {
-    return this.dbService.getPhysicalPathFromDb(logicalPath);
+    return this.dbService.getPhysicalPathForFile(logicalPath);
   }
 
   /**
@@ -154,7 +160,11 @@ export class DipReaderService {
   }
 
   public downloadDebugDb(): void {
-    this.dbService.exportDatabase();
+    if (this.dbService.exportDatabase) {
+      this.dbService.exportDatabase();
+    } else {
+      console.warn("Export DB non supportato dal motore corrente. Stai usando Tantivy");
+    }
   }
 
   /**

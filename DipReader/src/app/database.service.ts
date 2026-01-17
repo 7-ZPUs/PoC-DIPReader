@@ -2,6 +2,8 @@ import { Injectable } from '@angular/core';
 // Importiamo SOLO il tipo per TypeScript, così Vite non tocca il pacchetto a runtime
 import type sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 import { FileNode } from './dip-reader.service';
+import { BenchmarkService } from './benchmark.service'; // Assumi path corretto
+
 
 type Sqlite3 = Awaited<ReturnType<typeof sqlite3InitModule>>;
 type DB = InstanceType<Sqlite3['oo1']['DB']>;
@@ -12,7 +14,7 @@ export class DatabaseService {
   private sqlite3: Sqlite3 | null = null;
   private dbReady = false;
 
-  constructor() {}
+  constructor(private bench: BenchmarkService) {}
 
   async initializeDb(): Promise<void> {
     if (this.dbReady) return;
@@ -111,6 +113,7 @@ export class DatabaseService {
     metadataMap: { [key: string]: any },
     physicalPathMap: { [key: string]: string }
   ): Promise<void> {
+    const stopTimer = this.bench.startTimer('SQLite', 'populateDatabase');
     const db = this.db;
     if (!db) throw new Error('Database non inizializzato.');
 
@@ -168,7 +171,9 @@ export class DatabaseService {
         sql: 'INSERT INTO config (key, value) VALUES (?, ?)',
         bind: ['dip_index_version', indexFileName]
       });
+      stopTimer(`Docs: ${logicalPaths.length}`);
     });
+    
     console.log('Popolamento database completato.');
   }
 
@@ -234,6 +239,7 @@ export class DatabaseService {
    * Cerca documenti combinando ricerca per nome e filtri sui metadati.
    */
   async searchDocuments(nameQuery: string, filters: { key: string, value: string }[]): Promise<FileNode[]> {
+    const stopTimer = this.bench.startTimer('SQLite', 'searchDocuments');
     const db = this.db;
     if (!db) return [];
 
@@ -273,7 +279,9 @@ export class DatabaseService {
     console.log('[DatabaseService] Risultati trovati:', rows.length);
 
     // Ricostruisce l'albero parziale con i risultati trovati
-    return this.buildTree(rows, true); // Passiamo true per espandere i risultati
+    const result = this.buildTree(rows, true); // Passiamo true per espandere i risultati
+    stopTimer(`Query: "${nameQuery}" - Found: ${rows.length}`);
+    return result;
   }
 
   /**

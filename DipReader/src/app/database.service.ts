@@ -16,87 +16,88 @@ export class DatabaseService {
   constructor() {}
 
   async initializeDb(): Promise<void> {
-    if (this.dbReady) return;
+    return;
+    // if (this.dbReady) return;
 
-    try {
-      console.log('Inizializzazione database SQLite...');
+    // try {
+    //   console.log('Inizializzazione database SQLite...');
       
-      // Caricamento dinamico del modulo JS dalla cartella public
-      // Questo bypassa il bundling di Vite e carica i file statici che abbiamo copiato
-      // @ts-ignore
-      const sqliteJsPath = '/sqlite3.mjs';
-      const module = await import(/* @vite-ignore */ sqliteJsPath);
-      const initFunc = module.default as typeof sqlite3InitModule;
+    //   // Caricamento dinamico del modulo JS dalla cartella public
+    //   // Questo bypassa il bundling di Vite e carica i file statici che abbiamo copiato
+    //   // @ts-ignore
+    //   const sqliteJsPath = '/sqlite3.mjs';
+    //   const module = await import(/* @vite-ignore */ sqliteJsPath);
+    //   const initFunc = module.default as typeof sqlite3InitModule;
 
-      const sqlite3: Sqlite3 = await initFunc({
-        print: console.log,
-        printErr: console.error,
-        // locateFile ora funzionerà sicuramente perché il JS è nella stessa cartella del WASM (root)
-        locateFile: (file: string) => {
-          console.log(`[SQLite] locateFile richiesto per: ${file}`);
-          // Usa endsWith per intercettare anche './sqlite3.wasm' o altri percorsi relativi
-          if (file.endsWith('sqlite3.wasm')) {
-            const wasmPath = '/sqlite3.wasm';
-            console.log(`[SQLite] Reindirizzamento WASM a: ${wasmPath}`);
-            return wasmPath;
-          }
-          return file;
-        }
-      });
-      const oo = sqlite3.oo1;
-      this.sqlite3 = sqlite3;
-      this.db = new oo.DB('/dip.sqlite3', 'ct'); // 'c'reate, 't'race
-      console.log('Database aperto:', this.db.filename);
+    //   const sqlite3: Sqlite3 = await initFunc({
+    //     print: console.log,
+    //     printErr: console.error,
+    //     // locateFile ora funzionerà sicuramente perché il JS è nella stessa cartella del WASM (root)
+    //     locateFile: (file: string) => {
+    //       console.log(`[SQLite] locateFile richiesto per: ${file}`);
+    //       // Usa endsWith per intercettare anche './sqlite3.wasm' o altri percorsi relativi
+    //       if (file.endsWith('sqlite3.wasm')) {
+    //         const wasmPath = '/sqlite3.wasm';
+    //         console.log(`[SQLite] Reindirizzamento WASM a: ${wasmPath}`);
+    //         return wasmPath;
+    //       }
+    //       return file;
+    //     }
+    //   });
+    //   const oo = sqlite3.oo1;
+    //   this.sqlite3 = sqlite3;
+    //   this.db = new oo.DB('/dip.sqlite3', 'ct'); // 'c'reate, 't'race
+    //   console.log('Database aperto:', this.db.filename);
 
-      // Creazione tabelle ottimizzate per indicizzazione e ricerca
-      this.db.exec(`
-        -- Configurazione generale
-        CREATE TABLE IF NOT EXISTS config (
-          key TEXT PRIMARY KEY,
-          value TEXT
-        );
+    //   // Creazione tabelle ottimizzate per indicizzazione e ricerca
+    //   this.db.exec(`
+    //     -- Configurazione generale
+    //     CREATE TABLE IF NOT EXISTS config (
+    //       key TEXT PRIMARY KEY,
+    //       value TEXT
+    //     );
         
-        -- Tabella nodi: struttura gerarchica del pacchetto
-        CREATE TABLE IF NOT EXISTS nodes (
-          logical_path TEXT PRIMARY KEY,
-          parent_path TEXT,
-          name TEXT NOT NULL,
-          type TEXT NOT NULL
-        );
+    //     -- Tabella nodi: struttura gerarchica del pacchetto
+    //     CREATE TABLE IF NOT EXISTS nodes (
+    //       logical_path TEXT PRIMARY KEY,
+    //       parent_path TEXT,
+    //       name TEXT NOT NULL,
+    //       type TEXT NOT NULL
+    //     );
         
-        -- Metadati grezzi (JSON) per visualizzazione completa
-        CREATE TABLE IF NOT EXISTS raw_metadata (
-          logical_path TEXT PRIMARY KEY,
-          data TEXT,
-          FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE
-        );
+    //     -- Metadati grezzi (JSON) per visualizzazione completa
+    //     CREATE TABLE IF NOT EXISTS raw_metadata (
+    //       logical_path TEXT PRIMARY KEY,
+    //       data TEXT,
+    //       FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE
+    //     );
         
-        -- Metadati indicizzati (Key-Value) per ricerca rapida
-        CREATE TABLE IF NOT EXISTS metadata_attributes (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          logical_path TEXT NOT NULL,
-          key TEXT NOT NULL,
-          value TEXT,
-          FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE
-        );
+    //     -- Metadati indicizzati (Key-Value) per ricerca rapida
+    //     CREATE TABLE IF NOT EXISTS metadata_attributes (
+    //       id INTEGER PRIMARY KEY AUTOINCREMENT,
+    //       logical_path TEXT NOT NULL,
+    //       key TEXT NOT NULL,
+    //       value TEXT,
+    //       FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE
+    //     );
         
-        -- Mappatura percorsi fisici
-        CREATE TABLE IF NOT EXISTS physical_paths (
-          logical_path TEXT PRIMARY KEY,
-          physical_path TEXT,
-          FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE
-        );
+    //     -- Mappatura percorsi fisici
+    //     CREATE TABLE IF NOT EXISTS physical_paths (
+    //       logical_path TEXT PRIMARY KEY,
+    //       physical_path TEXT,
+    //       FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE
+    //     );
 
-        -- Indici per performance
-        CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_path);
-        CREATE INDEX IF NOT EXISTS idx_meta_attr_key ON metadata_attributes(key);
-        CREATE INDEX IF NOT EXISTS idx_meta_attr_val ON metadata_attributes(value);
-      `);
-      this.dbReady = true;
-      console.log('Tabelle SQLite create/verificate (Nuova Struttura).');
-    } catch (err: any) {
-      console.error('Errore durante inizializzazione DB:', err.message);
-    }
+    //     -- Indici per performance
+    //     CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_path);
+    //     CREATE INDEX IF NOT EXISTS idx_meta_attr_key ON metadata_attributes(key);
+    //     CREATE INDEX IF NOT EXISTS idx_meta_attr_val ON metadata_attributes(value);
+    //   `);
+    //   this.dbReady = true;
+    //   console.log('Tabelle SQLite create/verificate (Nuova Struttura).');
+    // } catch (err: any) {
+    //   console.error('Errore durante inizializzazione DB:', err.message);
+    // }
   }
 
   async isPopulated(indexFileName: string): Promise<boolean> {

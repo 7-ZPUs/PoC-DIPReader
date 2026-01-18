@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { DipReaderService, FileNode } from './dip-reader.service';
 import { MetadataViewerComponent } from './metadata-viewer.component';
 import { Filter } from './filter-manager';
+import { IndexerService } from './indexer';
 
 @Component({
   selector: 'app-root',
@@ -13,6 +14,7 @@ import { Filter } from './filter-manager';
     <div class="container">
       <div class="sidebar">
         <h3>Esplora DIP</h3>
+        <button (click)="runIndexer()" class="btn-primary" style="margin-bottom: 10px; width: 100%;">📂 Importa Directory</button>
         <!-- Pannello di Ricerca -->
         <div class="search-box">
           <input type="text" [(ngModel)]="searchName" placeholder="Cerca nome file..." (keyup.enter)="performSearch()" class="search-input">
@@ -153,7 +155,8 @@ export class AppComponent implements OnInit {
 
   constructor(
     private dipService: DipReaderService,
-    private cdr: ChangeDetectorRef 
+    private cdr: ChangeDetectorRef,
+    private indexerService: IndexerService
   ) {}
 
   ngOnInit() {
@@ -273,6 +276,15 @@ export class AppComponent implements OnInit {
 
   downloadDb() {
     this.dipService.downloadDebugDb();
+  }
+
+  async runIndexer() {
+    try {
+      await this.indexerService.runIndexer();
+    } catch (error) {
+      console.error('Error running indexer:', error);
+      alert('Failed to import directory. Please check console for details.');
+    }
   }
 
   getFilesList(fileInfo: any): any[] {

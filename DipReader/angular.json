@@ -24,11 +24,17 @@
                 "glob": "**/*",
                 "input": "public",
                 "output": "/"
+              },
+              {
+                "glob": "**/*",
+                "input": "node_modules/@sqlite.org/sqlite-wasm/sqlite-wasm/jswasm",
+                "output": "/"
               }
             ],
             "styles": [
               "src/styles.css"
-            ]
+            ],
+            "webWorkerTsConfig": "tsconfig.worker.json"
           },
           "configurations": {
             "production": {
@@ -57,6 +63,11 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "options": {
+            "prebundle": {
+              "exclude": [
+                "@sqlite.org/sqlite-wasm"
+              ]
+            },
             "headers": {
               "Cross-Origin-Opener-Policy": "same-origin",
               "Cross-Origin-Embedder-Policy": "require-corp"
@@ -73,7 +84,10 @@
           "defaultConfiguration": "development"
         },
         "test": {
-          "builder": "@angular/build:unit-test"
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "webWorkerTsConfig": "tsconfig.worker.json"
+          }
         }
       }
     }

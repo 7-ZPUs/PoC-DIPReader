@@ -200,6 +200,37 @@ export class DatabaseService {
     return db.selectValue('SELECT physical_path FROM physical_paths WHERE logical_path = ?', [logicalPath]) as string;
   }
 
+  async saveIntegrityStatus(logicalPath: string, isValid: boolean, calculatedHash: string, expectedHash: string): Promise<void> {
+    const db = this.db;
+    if (!db) return;
+    const now = new Date().toISOString();
+    db.exec({
+      sql: 'INSERT OR REPLACE INTO file_integrity (logical_path, is_valid, calculated_hash, expected_hash, verified_at) VALUES (?, ?, ?, ?, ?)',
+      bind: [logicalPath, isValid ? 1 : 0, calculatedHash, expectedHash, now]
+    });
+  }
+
+  async getIntegrityStatus(logicalPath: string): Promise<{ isValid: boolean, calculatedHash: string, expectedHash: string, verifiedAt: string } | null> {
+    const db = this.db;
+    if (!db) return null;
+    const result = db.exec({
+      sql: 'SELECT is_valid, calculated_hash, expected_hash, verified_at FROM file_integrity WHERE logical_path = ?',
+      bind: [logicalPath],
+      rowMode: 'object',
+      returnValue: 'resultRows'
+    }) as any[];
+    
+    if (result && result.length > 0) {
+      return {
+        isValid: result[0].is_valid === 1,
+        calculatedHash: result[0].calculated_hash,
+        expectedHash: result[0].expected_hash,
+        verifiedAt: result[0].verified_at
+      };
+    }
+    return null;
+  }
+
   /**
    * Recupera gli attributi metadati indicizzati per una visualizzazione pulita (Key-Value).
    */
@@ -540,5 +571,44 @@ export class DatabaseService {
     }) as { logical_path: string, name: string }[];
 
     return this.buildTree(rows, true); // Espande anche per la ricerca metadati
+  }
+
+  /**
+   * Ricerca file per nome
+   * @param nameQuery Termine di ricerca
+   * @returns Array di percorsi logici che corrispondono
+   */
+  async searchNodesByName(nameQuery: string): Promise<string[]> {
+    const db = this.db;
+    if (!db || !nameQuery.trim()) return [];
+
+    const rows = db.exec({
+      sql: 'SELECT DISTINCT logical_path FROM nodes WHERE name LIKE ?',
+      bind: [`%${nameQuery}%`],
+      rowMode: 'object',
+      returnValue: 'resultRows'
+    }) as { logical_path: string }[];
+
+    return rows.map(r => r.logical_path);
+  }
+
+  /**
+   * Alias per getAvailableMetadataKeys() per coerenza naming
+   */
+  async getAllMetadataKeys(): Promise<string[]> {
+    return await this.getAvailableMetadataKeys();
+  }
+
+  /**
+   * Alias per getGroupedFilterKeys() per coerenza naming
+   */
+  async getGroupedMetadataKeys(): Promise<
+    Array<{
+      groupLabel: string;
+      groupPath: string;
+      options: Array<{ value: string; label: string }>;
+    }>
+  > {
+    return await this.getGroupedFilterKeys();
   }
 }

@@ -10,128 +10,8 @@ import { IndexerService } from './indexer';
   selector: 'app-root',
   standalone: true,
   imports: [CommonModule, MetadataViewerComponent, FormsModule],
-  template: `
-    <div class="container">
-      <div class="sidebar">
-        <h3>Esplora DIP</h3>
-        <button (click)="runIndexer()" class="btn-primary" style="margin-bottom: 10px; width: 100%;">📂 Importa Directory</button>
-        <!-- Pannello di Ricerca -->
-        <div class="search-box">
-          <input type="text" [(ngModel)]="searchName" placeholder="Cerca nome file..." (keyup.enter)="performSearch()" class="search-input">
-          
-          <!-- Intestazione Filtri Globali -->
-          <div class="filter-header">
-            <span class="filter-title">🔍 Filtri Globali</span>
-            <span class="filter-info" title="I filtri si applicano a TUTTI i file in modo uniforme">ⓘ</span>
-          </div>
-          
-          <!-- Riga Filtri Dinamica -->
-          <div *ngFor="let filter of filters; let i = index" class="filter-row">
-            <select [(ngModel)]="filter.key" class="filter-select">
-              <option value="" disabled selected>Seleziona campo...</option>
-              <optgroup *ngFor="let group of groupedFilterKeys" [label]="group.groupLabel">
-                <option *ngFor="let opt of group.options" [value]="opt.value">{{ opt.label }}</option>
-              </optgroup>
-            </select>
-            <input type="text" [(ngModel)]="filter.value" placeholder="Contiene..." class="filter-input">
-            <button (click)="removeFilter(i)" class="btn-icon remove" title="Rimuovi filtro">×</button>
-          </div>
-
-          <div class="search-actions">
-            <button (click)="addFilter()" class="btn-small">+ Filtro</button>
-            <div class="right-actions">
-              <button (click)="performSearch()" class="btn-primary">Cerca</button>
-              <button *ngIf="isSearching" (click)="clearSearch()" class="btn-secondary">Reset</button>
-            </div>
-          </div>
-        </div>
-
-        <hr> <button (click)="downloadDb()" style="margin-bottom: 10px; cursor: pointer; font-size: 0.8rem;">💾 Scarica DB Debug</button>
-        
-        <ng-template #recursiveList let-list>
-          <ul>
-            <li *ngFor="let node of list">
-              <div (click)="handleNodeClick(node)" 
-                   [class.is-folder]="node.type === 'folder'"
-                   [class.is-file]="node.type === 'file'"
-                   [style.font-weight]="node === selectedFile ? 'bold' : 'normal'">
-                <span *ngIf="node.type === 'folder'">{{ node.expanded ? '📂' : '📁' }}</span>
-                <span *ngIf="node.type === 'file'">📄</span>
-                {{ node.name }}
-              </div>
-              <div *ngIf="node.type === 'folder' && node.expanded">
-                <ng-container *ngTemplateOutlet="recursiveList; context:{ $implicit: node.children }"></ng-container>
-              </div>
-            </li>
-          </ul>
-        </ng-template>
-
-        <ng-container *ngTemplateOutlet="recursiveList; context:{ $implicit: fileTree }"></ng-container>
-      </div>
-
-      <div class="main">
-        <div *ngIf="selectedFile; else noFile">
-          <h2>{{ selectedFile.name }}</h2>
-          <div style="margin-bottom: 15px; display: flex; gap: 10px;">
-            <button (click)="openFile(selectedFile)">Apri in Nuova Scheda</button>
-            <button (click)="downloadFile(selectedFile)">Scarica File</button>
-            <button (click)="checkIntegrity(selectedFile)">Verifica Integrità</button>
-            <span *ngIf="integrityStatus === 'loading'" class="badge loading">Verifica in corso...</span>
-            <span *ngIf="integrityStatus === 'valid'" class="badge success">✔ Integro (SHA-256)</span>
-            <span *ngIf="integrityStatus === 'invalid'" class="badge error">✖ Corrotto</span>
-          </div>
-          <app-metadata-viewer [logicalPath]="selectedFile.path"></app-metadata-viewer>
-        </div>
-        <ng-template #noFile>
-          <p>Seleziona un file dall'albero per visualizzarne i dettagli.</p>
-        </ng-template>
-      </div>
-    </div>
-  `,
-  styles: [`
-    .container { display: flex; height: 100vh; font-family: sans-serif; }
-    .sidebar { width: 400px; border-right: 1px solid #ccc; overflow-y: auto; padding: 10px; background: #f5f5f5; flex-shrink: 0; }
-    .main { flex: 1; padding: 20px; overflow-x: auto; min-width: 0; }
-    ul { list-style-type: none; padding-left: 20px; }
-    li { cursor: pointer; margin: 2px 0; }
-    .is-folder { font-weight: bold; color: #333; }
-    .is-file { color: #0066cc; }
-    .metadata-box { background: #fff; padding: 15px; border: 1px solid #ddd; margin-top: 20px; }
-    .metadata-box pre { white-space: pre-wrap; word-break: break-all; }
-    .error-box { border-color: #d9534f; color: #d9534f; background-color: #f2dede; }
-    
-    /* Stili Ricerca */
-    .search-box { background: #e9ecef; padding: 10px; border-radius: 4px; margin-bottom: 10px; }
-    .search-input, .filter-select, .filter-input { width: 100%; padding: 5px; margin-bottom: 5px; box-sizing: border-box; font-size: 0.85rem; }
-    
-    /* Stili optgroup nella select */
-    .filter-select optgroup { font-weight: bold; color: #333; padding: 5px; }
-    .filter-select option { padding-left: 15px; color: #333; font-weight: normal; }
-    
-    /* Header Filtri Globali */
-    .filter-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-weight: 600; color: #495057; }
-    .filter-title { font-size: 0.9rem; }
-    .filter-info { cursor: help; color: #0066cc; font-weight: bold; font-size: 0.9rem; opacity: 0.7; }
-    .filter-info:hover { opacity: 1; }
-    
-    .filter-row { display: flex; gap: 5px; margin-bottom: 5px; align-items: center; }
-    .filter-select { flex: 1; min-width: 0; }
-    .filter-input { flex: 1; min-width: 0; }
-    .filter-select { flex: 1; min-width: 0; }
-    .filter-input { flex: 1; min-width: 0; }
-    .search-actions { display: flex; justify-content: space-between; margin-top: 5px; }
-    .right-actions { display: flex; gap: 5px; }
-    .btn-small { font-size: 0.8rem; padding: 2px 5px; }
-    .btn-primary { background-color: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; }
-    .btn-secondary { background-color: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; }
-    .btn-icon.remove { background: none; border: none; color: #dc3545; font-weight: bold; cursor: pointer; font-size: 1.2rem; line-height: 1; }
-    
-    /* Badge Integrità */
-    .badge { padding: 6px 12px; border-radius: 4px; font-size: 0.85rem; display: flex; align-items: center; font-weight: bold; color: white; }
-    .loading { background-color: #ffc107; color: #333; }
-    .success { background-color: #28a745; }
-    .error { background-color: #dc3545; }
-  `]
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.css']
 })
 export class AppComponent implements OnInit {
   fileTree: FileNode[] = [];
@@ -151,6 +31,7 @@ export class AppComponent implements OnInit {
   filters: Filter[] = [];
   isSearching = false;
   integrityStatus: 'none' | 'loading' | 'valid' | 'invalid' | 'error' = 'none';
+  integrityVerifiedAt: string | null = null;
   // -------------------------------------------------
 
   constructor(
@@ -214,14 +95,25 @@ export class AppComponent implements OnInit {
       // Deseleziona il file quando si interagisce con le cartelle
       this.selectedFile = null;
       this.integrityStatus = 'none';
+      this.integrityVerifiedAt = null;
       this.metadata = null;
     } else {
       // Imposta il file selezionato così la parte destra si aggiorna
       this.selectedFile = node;
       this.integrityStatus = 'none'; // Resetta lo stato della verifica per il nuovo file
+      this.integrityVerifiedAt = null;
+      
       // Recupera i metadati in modo ASINCRONO dal database
       this.metadata = await this.dipService.getMetadataForFile(node.path);
       console.log(`Metadati per '${node.path}':`, this.metadata);
+      
+      // Carica lo stato di integrità salvato, se disponibile
+      const storedStatus = await this.dipService.getStoredIntegrityStatus(node.path);
+      if (storedStatus) {
+        this.integrityStatus = storedStatus.valid ? 'valid' : 'invalid';
+        this.integrityVerifiedAt = storedStatus.verifiedAt;
+        this.cdr.detectChanges();
+      }
     }
   }
 
@@ -256,9 +148,11 @@ export class AppComponent implements OnInit {
 
   async checkIntegrity(node: FileNode) {
     this.integrityStatus = 'loading';
+    this.integrityVerifiedAt = null;
     try {
       const result = await this.dipService.verifyFileIntegrity(node.path);
       this.integrityStatus = result.valid ? 'valid' : 'invalid';
+      this.integrityVerifiedAt = new Date().toISOString();
       this.cdr.detectChanges(); // Forza l'aggiornamento della UI prima dell'alert
 
       if (!result.valid) {
@@ -270,6 +164,7 @@ export class AppComponent implements OnInit {
     } catch (err: any) {
       console.error('Errore verifica integrità:', err);
       this.integrityStatus = 'error';
+      this.integrityVerifiedAt = null;
       alert('Errore durante la verifica: ' + err.message);
     }
   }
@@ -287,9 +182,19 @@ export class AppComponent implements OnInit {
     }
   }
 
+  formatDate(isoString: string): string {
+    const date = new Date(isoString);
+    return date.toLocaleString('it-IT', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
   getFilesList(fileInfo: any): any[] {
     if (!fileInfo) return [];
     return Array.isArray(fileInfo) ? fileInfo : [fileInfo];
   }
-  // -------------------------------------------------
 }

@@ -4,16 +4,22 @@ import { XMLParser } from 'fast-xml-parser';
 import { map, catchError } from 'rxjs/operators';
 import { Observable, forkJoin, of, from, lastValueFrom } from 'rxjs';
 import { DatabaseService } from './database.service';
+import { FileIntegrityService } from './services/file-integrity.service';
+import { MetadataService } from './services/metadata.service';
 import { Filter } from './filter-manager';
 
 export interface FileNode {
   name: string;
-  path: string; // Questo sarà il "percorso logico", usato come chiave unica
+  path: string;
   type: 'folder' | 'file';
   children: FileNode[];
-  expanded?: boolean; // Per aprire/chiudere le cartelle
+  expanded?: boolean;
 }
 
+/**
+ * Servizio principale per la lettura e gestione dei pacchetti DIP
+ * Orchestra il caricamento, parsing e accesso ai dati
+ */
 @Injectable({ providedIn: 'root' })
 export class DipReaderService {
   private parser = new XMLParser({ 
@@ -21,7 +27,12 @@ export class DipReaderService {
     attributeNamePrefix: '@_'
   });
 
-  constructor(private http: HttpClient, private dbService: DatabaseService) {}
+  constructor(
+    private http: HttpClient,
+    private dbService: DatabaseService,
+    private fileIntegrityService: FileIntegrityService,
+    private metadataService: MetadataService
+  ) {}
 
   /**
    * Orchestratore principale. Carica dinamicamente l'intero pacchetto DIP.
@@ -172,38 +183,51 @@ export class DipReaderService {
   }
 
   /**
-   * Verifica l'integrità del file calcolando l'hash SHA-256 e confrontandolo con i metadati.
+   * Verifica l'integrità di un file scaricandolo, calcolando l'hash SHA-256
+   * e confrontandolo con quello memorizzato nei metadati
+   * @param logicalPath Percorso logico del file da verificare
+   * @returns Risultato della verifica (valid, calculated hash, expected hash)
    */
   public async verifyFileIntegrity(logicalPath: string): Promise<{ valid: boolean, calculated: string, expected: string }> {
     const physicalPath = await this.getPhysicalPathForFile(logicalPath);
     if (!physicalPath) throw new Error('File fisico non trovato.');
 
-    const metadata = await this.getMetadataForFile(logicalPath);
-    // Cerca l'hash nei metadati. La chiave specifica è "Impronta".
-    // Il path completo è solitamente: Document.DocumentoAmministrativoInformatico.IdDoc.ImprontaCrittograficaDelDocumento.Impronta
-    const expectedHash = this.dbService.findValueByKey(metadata, 'Impronta');
-
+    // Recupera l'hash atteso dai metadati
+    const expectedHash = await this.metadataService.getExpectedHash(logicalPath);
     if (!expectedHash) {
       throw new Error('Impronta crittografica (Hash) non trovata nei metadati.');
     }
 
-    // Scarica il file come blob/buffer per calcolare l'hash
+    // Scarica e verifica l'integrità usando il servizio dedicato
     const response = await fetch(physicalPath);
     if (!response.ok) {
       throw new Error(`Impossibile leggere il file per la verifica: ${response.statusText}`);
     }
+    
     const arrayBuffer = await response.arrayBuffer();
-
-    // Calcola SHA-256 usando le API native del browser (SubtleCrypto)
-    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const calculatedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
+    const result = await this.fileIntegrityService.verifyFileHash(arrayBuffer, expectedHash);
+    
+    // Salva il risultato nel database per utilizzo futuro
+    await this.fileIntegrityService.saveVerificationResult(logicalPath, result);
+    
     return {
-      valid: calculatedHash.toLowerCase() === expectedHash.toLowerCase(),
-      calculated: calculatedHash,
-      expected: expectedHash
+      valid: result.isValid,
+      calculated: result.calculatedHash,
+      expected: result.expectedHash
     };
+  }
+  
+  /**
+   * Recupera lo stato di integrità precedentemente salvato per un file
+   */
+  public async getStoredIntegrityStatus(logicalPath: string): Promise<{ valid: boolean, calculated: string, expected: string, verifiedAt: string } | null> {
+    const stored = await this.fileIntegrityService.getStoredStatus(logicalPath);
+    return stored ? {
+      valid: stored.isValid,
+      calculated: stored.calculatedHash,
+      expected: stored.expectedHash,
+      verifiedAt: stored.verifiedAt
+    } : null;
   }
 
   // --- HELPERS PRIVATI ---

@@ -63,7 +63,7 @@ export class DatabaseService {
           name TEXT NOT NULL,
           type TEXT NOT NULL
         );
-        
+
         -- Metadati grezzi (JSON) per visualizzazione completa
         CREATE TABLE IF NOT EXISTS raw_metadata (
           logical_path TEXT PRIMARY KEY,
@@ -86,11 +86,167 @@ export class DatabaseService {
           physical_path TEXT,
           FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE
         );
+        
+        -- Stato integrità file (SHA256+Base64)
+        CREATE TABLE IF NOT EXISTS file_integrity (
+          logical_path TEXT PRIMARY KEY,
+          is_valid INTEGER NOT NULL,
+          calculated_hash TEXT NOT NULL,
+          expected_hash TEXT NOT NULL,
+          verified_at TEXT NOT NULL,
+          FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE
+        );
+
+        -- Layer archivistico
+        CREATE TABLE IF NOT EXISTS archival_process (
+          uuid TEXT PRIMARY KEY
+        );
+
+        CREATE TABLE IF NOT EXISTS document_class (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          class_name TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS aip (
+          uuid TEXT PRIMARY KEY,
+          document_class_id INTEGER,
+          archival_process_uuid TEXT,
+          FOREIGN KEY(document_class_id) REFERENCES document_class(id),
+          FOREIGN KEY(archival_process_uuid) REFERENCES archival_process(uuid)
+        );
+
+        CREATE TABLE IF NOT EXISTS administrative_procedure (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          catalog_uri TEXT NOT NULL,
+          title TEXT NOT NULL,
+          subject_of_interest TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS document_aggregation (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          procedure_id INTEGER,
+          type TEXT NOT NULL,
+          FOREIGN KEY(procedure_id) REFERENCES administrative_procedure(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS document (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          root_path TEXT NOT NULL,
+          aip_uuid TEXT NOT NULL,
+          aggregation_id INTEGER,
+          FOREIGN KEY(aip_uuid) REFERENCES aip(uuid),
+          FOREIGN KEY(aggregation_id) REFERENCES document_aggregation(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS file (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          relative_path TEXT NOT NULL,
+          is_main INTEGER NOT NULL DEFAULT 0,
+          document_id INTEGER,
+          FOREIGN KEY(document_id) REFERENCES document(id)
+        );
+
+        -- Mapping nodo -> documento per unire al modello archivistico
+        CREATE TABLE IF NOT EXISTS node_document (
+          logical_path TEXT PRIMARY KEY,
+          document_id INTEGER NOT NULL,
+          FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE,
+          FOREIGN KEY(document_id) REFERENCES document(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS metadata (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          meta_key TEXT NOT NULL,
+          meta_value TEXT,
+          meta_type TEXT NOT NULL DEFAULT 'string' CHECK(meta_type IN ('string','number','date')),
+          document_id INTEGER,
+          aip_uuid TEXT,
+          archival_process_uuid TEXT,
+          FOREIGN KEY(document_id) REFERENCES document(id),
+          FOREIGN KEY(aip_uuid) REFERENCES aip(uuid),
+          FOREIGN KEY(archival_process_uuid) REFERENCES archival_process(uuid)
+        );
+
+        CREATE TABLE IF NOT EXISTS subject (
+          id INTEGER PRIMARY KEY AUTOINCREMENT
+        );
+
+        CREATE TABLE IF NOT EXISTS subject_pf (
+          subject_id INTEGER PRIMARY KEY,
+          cf TEXT UNIQUE,
+          first_name TEXT NOT NULL,
+          last_name TEXT NOT NULL,
+          digital_addresses TEXT,
+          FOREIGN KEY(subject_id) REFERENCES subject(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS subject_pg (
+          subject_id INTEGER PRIMARY KEY,
+          p_iva TEXT UNIQUE,
+          company_name TEXT NOT NULL,
+          office_name TEXT,
+          digital_addresses TEXT,
+          FOREIGN KEY(subject_id) REFERENCES subject(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS subject_pai (
+          subject_id INTEGER PRIMARY KEY,
+          administration_ipa_name TEXT NOT NULL,
+          administration_aoo_name TEXT NOT NULL,
+          administration_uor_name TEXT NOT NULL,
+          digital_addresses TEXT,
+          FOREIGN KEY(subject_id) REFERENCES subject(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS subject_pae (
+          subject_id INTEGER PRIMARY KEY,
+          administration_name TEXT NOT NULL UNIQUE,
+          office_name TEXT,
+          digital_addresses TEXT,
+          FOREIGN KEY(subject_id) REFERENCES subject(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS subject_as (
+          subject_id INTEGER PRIMARY KEY,
+          first_name TEXT,
+          last_name TEXT,
+          cf TEXT UNIQUE,
+          organization_name TEXT NOT NULL,
+          office_name TEXT NOT NULL,
+          digital_addresses TEXT,
+          FOREIGN KEY(subject_id) REFERENCES subject(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS subject_sq (
+          subject_id INTEGER PRIMARY KEY,
+          system_name TEXT NOT NULL,
+          FOREIGN KEY(subject_id) REFERENCES subject(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS document_subject_association (
+          document_id INTEGER NOT NULL,
+          subject_id INTEGER NOT NULL,
+          PRIMARY KEY (document_id, subject_id),
+          FOREIGN KEY(document_id) REFERENCES document(id),
+          FOREIGN KEY(subject_id) REFERENCES subject(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS phase (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          type TEXT NOT NULL,
+          start_date TEXT NOT NULL,
+          end_date TEXT,
+          administrative_procedure_id INTEGER,
+          FOREIGN KEY(administrative_procedure_id) REFERENCES administrative_procedure(id)
+        );
 
         -- Indici per performance
         CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_path);
         CREATE INDEX IF NOT EXISTS idx_meta_attr_key ON metadata_attributes(key);
         CREATE INDEX IF NOT EXISTS idx_meta_attr_val ON metadata_attributes(value);
+        CREATE INDEX IF NOT EXISTS idx_metadata_key ON metadata(meta_key);
+        CREATE INDEX IF NOT EXISTS idx_file_document ON file(document_id);
+        CREATE INDEX IF NOT EXISTS idx_node_document_doc ON node_document(document_id);
       `);
       this.dbReady = true;
       console.log('Tabelle SQLite create/verificate (Nuova Struttura).');
@@ -197,6 +353,37 @@ export class DatabaseService {
     const db = this.db;
     if (!db) return undefined;
     return db.selectValue('SELECT physical_path FROM physical_paths WHERE logical_path = ?', [logicalPath]) as string;
+  }
+
+  async saveIntegrityStatus(logicalPath: string, isValid: boolean, calculatedHash: string, expectedHash: string): Promise<void> {
+    const db = this.db;
+    if (!db) return;
+    const now = new Date().toISOString();
+    db.exec({
+      sql: 'INSERT OR REPLACE INTO file_integrity (logical_path, is_valid, calculated_hash, expected_hash, verified_at) VALUES (?, ?, ?, ?, ?)',
+      bind: [logicalPath, isValid ? 1 : 0, calculatedHash, expectedHash, now]
+    });
+  }
+
+  async getIntegrityStatus(logicalPath: string): Promise<{ isValid: boolean, calculatedHash: string, expectedHash: string, verifiedAt: string } | null> {
+    const db = this.db;
+    if (!db) return null;
+    const result = db.exec({
+      sql: 'SELECT is_valid, calculated_hash, expected_hash, verified_at FROM file_integrity WHERE logical_path = ?',
+      bind: [logicalPath],
+      rowMode: 'object',
+      returnValue: 'resultRows'
+    }) as any[];
+    
+    if (result && result.length > 0) {
+      return {
+        isValid: result[0].is_valid === 1,
+        calculatedHash: result[0].calculated_hash,
+        expectedHash: result[0].expected_hash,
+        verifiedAt: result[0].verified_at
+      };
+    }
+    return null;
   }
 
   /**
@@ -539,5 +726,44 @@ export class DatabaseService {
     }) as { logical_path: string, name: string }[];
 
     return this.buildTree(rows, true); // Espande anche per la ricerca metadati
+  }
+
+  /**
+   * Ricerca file per nome
+   * @param nameQuery Termine di ricerca
+   * @returns Array di percorsi logici che corrispondono
+   */
+  async searchNodesByName(nameQuery: string): Promise<string[]> {
+    const db = this.db;
+    if (!db || !nameQuery.trim()) return [];
+
+    const rows = db.exec({
+      sql: 'SELECT DISTINCT logical_path FROM nodes WHERE name LIKE ?',
+      bind: [`%${nameQuery}%`],
+      rowMode: 'object',
+      returnValue: 'resultRows'
+    }) as { logical_path: string }[];
+
+    return rows.map(r => r.logical_path);
+  }
+
+  /**
+   * Alias per getAvailableMetadataKeys() per coerenza naming
+   */
+  async getAllMetadataKeys(): Promise<string[]> {
+    return await this.getAvailableMetadataKeys();
+  }
+
+  /**
+   * Alias per getGroupedFilterKeys() per coerenza naming
+   */
+  async getGroupedMetadataKeys(): Promise<
+    Array<{
+      groupLabel: string;
+      groupPath: string;
+      options: Array<{ value: string; label: string }>;
+    }>
+  > {
+    return await this.getGroupedFilterKeys();
   }
 }

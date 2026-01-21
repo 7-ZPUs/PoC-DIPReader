@@ -1,49 +1,99 @@
 <div class="container">
-<div class="sidebar">
+  <div class="sidebar">
     <h3>Esplora DIP</h3>
-    <button (click)="downloadDb()" style="margin-bottom: 10px; cursor: pointer;">💾 Scarica DB Debug</button>
-    <!-- debug 
-    <div style="font-size: 10px; color: red; background: #eee; padding: 5px;">
-        DEBUG DATI: {{ fileTree.length }} nodi
-        <pre>{{ fileTree | json }}</pre>
+    
+    <!-- Pannello di Ricerca -->
+    <div class="search-box">
+      <input 
+        type="text" 
+        [(ngModel)]="searchName" 
+        placeholder="Cerca nome file..." 
+        (keyup.enter)="performSearch()" 
+        class="search-input">
+      
+      <!-- Intestazione Filtri Globali -->
+      <div class="filter-header">
+        <span class="filter-title">🔍 Filtri Globali</span>
+        <span class="filter-info" title="I filtri si applicano a TUTTI i file in modo uniforme">ⓘ</span>
+      </div>
+      
+      <!-- Riga Filtri Dinamica -->
+      <div *ngFor="let filter of filters; let i = index" class="filter-row">
+        <select [(ngModel)]="filter.key" class="filter-select">
+          <option value="" disabled selected>Seleziona campo...</option>
+          <optgroup *ngFor="let group of groupedFilterKeys" [label]="group.groupLabel">
+            <option *ngFor="let opt of group.options" [value]="opt.value">{{ opt.label }}</option>
+          </optgroup>
+        </select>
+        <input type="text" [(ngModel)]="filter.value" placeholder="Contiene..." class="filter-input">
+        <button (click)="removeFilter(i)" class="btn-icon remove" title="Rimuovi filtro">×</button>
+      </div>
+
+      <!-- Azioni di Ricerca -->
+      <div class="search-actions">
+        <button (click)="addFilter()" class="btn-small">+ Filtro</button>
+        <div class="right-actions">
+          <button (click)="performSearch()" class="btn-primary">Cerca</button>
+          <button *ngIf="isSearching" (click)="clearSearch()" class="btn-secondary">Reset</button>
+        </div>
+      </div>
     </div>
-    -->
-    <ul>
-      <ng-container *ngTemplateOutlet="recursiveList; context:{ $implicit: fileTree }"></ng-container>
-    </ul>
+
+    <hr>
+    <button (click)="downloadDb()" class="btn-debug">💾 Scarica DB Debug</button>
+    
+    <!-- Template Ricorsivo per l'Albero -->
+    <ng-template #recursiveList let-list>
+      <ul>
+        <li *ngFor="let node of list">
+          <div (click)="handleNodeClick(node)" 
+               [class.is-folder]="node.type === 'folder'"
+               [class.is-file]="node.type === 'file'"
+               [style.font-weight]="node === selectedFile ? 'bold' : 'normal'">
+            <span *ngIf="node.type === 'folder'">{{ node.expanded ? '📂' : '📁' }}</span>
+            <span *ngIf="node.type === 'file'">📄</span>
+            {{ node.name }}
+          </div>
+          <div *ngIf="node.type === 'folder' && node.expanded">
+            <ng-container *ngTemplateOutlet="recursiveList; context:{ $implicit: node.children }"></ng-container>
+          </div>
+        </li>
+      </ul>
+    </ng-template>
+
+    <!-- Visualizzazione Albero -->
+    <ng-container *ngTemplateOutlet="recursiveList; context:{ $implicit: fileTree }"></ng-container>
   </div>
 
+  <!-- Pannello Principale -->
   <div class="main">
-    <div *ngIf="selectedFile; else noSelect">
+    <div *ngIf="selectedFile; else noFile">
       <h2>{{ selectedFile.name }}</h2>
-      <button (click)="openFile(selectedFile!)">Apri File Originale</button>
       
-      <!-- Mostra un messaggio di errore se il caricamento dei metadati fallisce -->
-      <div *ngIf="metadata?.error" class="metadata-box error-box">
-        <h3>Errore</h3>
-        <p>{{ metadata.error }}</p>
+      <!-- Barra Azioni File -->
+      <div class="file-actions">
+        <button (click)="openFile(selectedFile)">Apri in Nuova Scheda</button>
+        <button (click)="downloadFile(selectedFile)">Scarica File</button>
+        <button (click)="checkIntegrity(selectedFile)">Verifica Integrità</button>
+        
+        <!-- Badge Stato Integrità -->
+        <span *ngIf="integrityStatus === 'loading'" class="badge loading">Verifica in corso...</span>
+        <span *ngIf="integrityStatus === 'valid'" class="badge success">✔ Integro (SHA-256)</span>
+        <span *ngIf="integrityStatus === 'invalid'" class="badge error">✖ Corrotto</span>
+        
+        <!-- Data Verifica -->
+        <small *ngIf="integrityVerifiedAt" class="verification-time">
+          Verificato: {{ formatDate(integrityVerifiedAt) }}
+        </small>
       </div>
       
-      <!-- Mostra i metadati solo se non ci sono errori e l'oggetto metadata esiste -->
-      <div *ngIf="metadata && !metadata.error" class="metadata-box">
-        <h3>Tutti i Metadati</h3>
-        <!-- Usiamo il pipe 'json' per visualizzare l'intero oggetto. È il modo più semplice e affidabile per vedere TUTTI i dati. -->
-        <pre>{{ metadata | json }}</pre>
-      </div>
+      <!-- Visualizzatore Metadati -->
+      <app-metadata-viewer [logicalPath]="selectedFile.path"></app-metadata-viewer>
     </div>
-    <ng-template #noSelect>
-      <p class="placeholder">Seleziona un file per vedere i dettagli.</p>
+
+    <!-- Messaggio Nessun File Selezionato -->
+    <ng-template #noFile>
+      <p>Seleziona un file dall'albero per visualizzarne i dettagli.</p>
     </ng-template>
   </div>
 </div>
-
-<ng-template #recursiveList let-nodes>
-  <li *ngFor="let node of nodes">
-    <span (click)="handleNodeClick(node)" [class.is-folder]="node.type === 'folder'">
-      {{ node.type === 'folder' ? '📁' : '📄' }} {{ node.name }}
-    </span>
-    <ul *ngIf="node.type === 'folder' && node.expanded">
-      <ng-container *ngTemplateOutlet="recursiveList; context:{ $implicit: node.children }"></ng-container>
-    </ul>
-  </li>
-</ng-template>

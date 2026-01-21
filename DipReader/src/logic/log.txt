@@ -1,0 +1,9 @@
+Trovato DiPIndex: DiPIndex.20251111.0413d8ee-8e82-4331-864e-7f8098bcc419.xml
+indexerLogic.ts:278 Attempting to access metadata at: ddaa9d92-3eac-4b56-8019-1d562ff863f2/2025/11/202511101414.882bbae2-19ab-4245-8823-1841d32a07c6/documents/e2717093-efe4-4ebe-8ced-2ed92b26cdfc/e2717093-efe4-4ebe-8ced-2ed92b26cdfc.metadata.xml
+indexerLogic.ts:237 Attempting to get file handle for: e2717093-efe4-4ebe-8ced-2ed92b26cdfc.metadata.xml
+indexerLogic.ts:244 Entry: 31814f09-7f2e-4950-88bb-1906b382b7d3 directory
+indexerLogic.ts:244 Entry: 431b907c-0769-4558-b266-d2a5aa107262 directory
+indexerLogic.ts:244 Entry: 486fceea-ccbc-4ac4-96a9-997e62d6a105 directory
+indexerLogic.ts:244 Entry: c3f68d6d-bac6-4a79-973a-06b5b45cf75d directory
+indexerLogic.ts:244 Entry: d779599d-d5b6-4233-9e63-9a0897401023 directory
+indexerLogic.ts:63  Error indexing DiPIndex: NotFoundError: A requested file or directory could not be found at the time an operation was processed.

@@ -10,7 +10,12 @@ export class MetadataService {
   constructor(private dbService: DatabaseService) {}
 
   async getMetadata(logicalPath: string): Promise<any> {
-    return await this.dbService.getMetadataFromDb(logicalPath);
+    const attributes = await this.dbService.getMetadataAttributes(logicalPath);
+    if (attributes.length === 0) {
+      return { error: 'Metadati non trovati nel DB.' };
+    }
+    // Converte array in oggetto
+    return attributes.reduce((acc, attr) => ({ ...acc, [attr.key]: attr.value }), {});
   }
 
   async getMetadataValue(logicalPath: string, key: string): Promise<string | undefined> {

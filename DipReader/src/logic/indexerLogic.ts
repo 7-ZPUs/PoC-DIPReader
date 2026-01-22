@@ -79,9 +79,10 @@ export class IndexerLogic {
     if (!this.db) return 0;
 
     const className = docClassElement.getAttribute('name') || '';
-    const classUUID = docClassElement.getAttribute('uuid') || '';
+    //const classUUID = docClassElement.getAttribute('uuid') || '';
 
     // Insert document class
+    console.log("Processing DocumentClass:", className);
     const insertClassSql = `INSERT OR IGNORE INTO document_class (class_name) VALUES (?)`;
     this.db.exec({
       sql: insertClassSql,
@@ -164,10 +165,9 @@ export class IndexerLogic {
 
     // Process Metadata file
     const metadata = filesElement.getElementsByTagName('Metadata')[0];
+    const metadataPath = (metadata.textContent || '').trim();
     if (metadata) {
-      const metadataPath = (metadata.textContent || '').trim();
       await this.insertFile(metadataPath, false, documentId);
-      await this.processMetadataFile(`${currentPath}/${metadataPath.replace(/\.\//, '')}`, documentId);
     }
 
     // Process Primary file
@@ -183,6 +183,8 @@ export class IndexerLogic {
       const attachmentPath = (attachments[i].textContent || '').trim();
       await this.insertFile(attachmentPath, false, documentId);
     }
+
+    await this.processMetadataFile(`${currentPath}/${metadataPath.replace(/\.\//, '')}`, documentId);
   }
 
   private async insertFile(relativePath: string, isMain: boolean, documentId: number): Promise<void> {
@@ -304,7 +306,8 @@ export class IndexerLogic {
     });
 
     const IndiceDiClassificazione = xmlDoc.getElementsByTagName('IndiceDiClassificazione')[0];
-    const Descrizione = xmlDoc.getElementsByTagName('Descrizione')[0];
+    const Classificazione = xmlDoc.getElementsByTagName('Classificazione')[0];
+    const Descrizione = Classificazione?.getElementsByTagName('Descrizione')[0];
     const PianoDiClassificazione = xmlDoc.getElementsByTagName('PianoDiClassificazione')[0];
 
     this.db?.exec({
@@ -331,6 +334,33 @@ export class IndexerLogic {
       sql: query,
       bind: ['Note', Note?.textContent || '', documentId, 'string']
     });
+
+    query = 'INSERT OR IGNORE INTO metadata(meta_key, meta_value, file_id, meta_type) VALUES (?, ?, ?, ?)';
+
+    const attachments = xmlDoc.getElementsByTagName('IndiceAllegati');
+    for (let i = 0; i < attachments.length; i++) {
+      const attachment = attachments[i];
+      const IdDoc = attachment.getElementsByTagName('IdDoc')[0];
+      let attachmentId = IdDoc?.getElementsByTagName('Identificativo')[0]?.textContent || '';
+      if (attachmentId) {
+        let description = attachment.getElementsByTagName('Descrizione')[0]?.textContent || '';
+        let id_query = 'SELECT id FROM file WHERE relative_path LIKE ?';
+        this.db?.exec({
+          sql: id_query,
+          bind: [`%${attachmentId}%`],
+          callback: (row) => {
+            attachmentId = row[0] as string;
+          }
+        });
+        console.log('Processing attachment metadata for file ID:', attachmentId);
+        this.db?.exec({
+          sql: query,
+          bind: [`Descrizione`, description, attachmentId, 'string']
+        });
+      }
+    }
+
+    console.log('Metadata processed for document ID:', documentId);
 
   }
 }

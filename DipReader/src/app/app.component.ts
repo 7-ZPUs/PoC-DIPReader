@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { DipReaderService, FileNode } from './dip-reader.service';
 import { MetadataViewerComponent } from './metadata-viewer.component';
 import { Filter } from './filter-manager';
-import { IndexerService } from './indexer';
+import { DatabaseService } from './database.service';
 
 @Component({
   selector: 'app-root',
@@ -15,11 +15,11 @@ import { IndexerService } from './indexer';
 })
 export class AppComponent implements OnInit {
   fileTree: FileNode[] = [];
-  
+
   // --- PROPRIETÀ REINSERITE PER EVITARE L'ERRORE ---
   selectedFile: FileNode | null = null;
   metadata: any = null;
-  
+
   // Proprietà per la ricerca
   searchName = '';
   availableKeys: string[] = [];
@@ -37,26 +37,21 @@ export class AppComponent implements OnInit {
   constructor(
     private dipService: DipReaderService,
     private cdr: ChangeDetectorRef,
-    private indexerService: IndexerService
-  ) {}
+    private dbService: DatabaseService
+  ) { }
 
   ngOnInit() {
-    this.dipService.loadPackage().subscribe({
-      next: (tree) => {
-        console.log('AppComponent: Pacchetto caricato, albero ricevuto.', tree);
-        this.fileTree = tree;
-        this.loadSearchKeys(); // Carica le chiavi per i filtri
-        this.cdr.detectChanges(); 
-      },
-      error: (err) => {
-        console.error('ERRORE GRAVE durante il caricamento del pacchetto:', err);
-      }
-    });
+    //
   }
 
   async loadSearchKeys() {
-    this.availableKeys = await this.dipService.getAvailableMetadataKeys();
-    this.groupedFilterKeys = await this.dipService.getGroupedFilterKeys();
+    if (!this.dbService.isDbReady()) {
+      console.warn('[AppComponent] Database non ancora pronto, impossibile caricare i filtri');
+      return;
+    }
+
+    this.availableKeys = await this.dbService.getAvailableMetadataKeys();
+    this.groupedFilterKeys = await this.dbService.getGroupedFilterKeys();
     console.log('Filtri raggruppati caricati:', this.groupedFilterKeys.length, 'gruppi');
   }
 
@@ -69,24 +64,25 @@ export class AppComponent implements OnInit {
   }
 
   async performSearch() {
+    if (!this.dbService.isDbReady()) {
+      alert('Database non ancora pronto. Importare prima una directory.');
+      return;
+    }
+
     this.isSearching = true;
     // Pulisce la selezione corrente
     this.selectedFile = null;
     this.metadata = null;
-    
-    this.fileTree = await this.dipService.searchDocuments(this.searchName, this.filters);
+
+    this.fileTree = await this.dbService.searchDocuments(this.searchName, this.filters);
     this.cdr.detectChanges();
   }
 
   clearSearch() {
     this.searchName = '';
     this.filters = [];
+    this.fileTree = [];
     this.isSearching = false;
-    // Ricarica l'albero completo
-    this.dipService.loadPackage().subscribe(tree => {
-      this.fileTree = tree;
-      this.cdr.detectChanges();
-    });
   }
 
   async handleNodeClick(node: FileNode) {
@@ -102,15 +98,19 @@ export class AppComponent implements OnInit {
       this.selectedFile = node;
       this.integrityStatus = 'none'; // Resetta lo stato della verifica per il nuovo file
       this.integrityVerifiedAt = null;
-      
+
       // Recupera i metadati in modo ASINCRONO dal database
-      this.metadata = await this.dipService.getMetadataForFile(node.path);
+      const attributes = await this.dbService.getMetadataAttributes(node.path);
+      // Converte array in oggetto per retrocompatibilità
+      this.metadata = attributes.length > 0
+        ? attributes.reduce((acc, attr) => ({ ...acc, [attr.key]: attr.value }), {})
+        : { error: 'Metadati non trovati nel DB.' };
       console.log(`Metadati per '${node.path}':`, this.metadata);
-      
+
       // Carica lo stato di integrità salvato, se disponibile
-      const storedStatus = await this.dipService.getStoredIntegrityStatus(node.path);
+      const storedStatus = await this.dbService.getIntegrityStatus(node.path);
       if (storedStatus) {
-        this.integrityStatus = storedStatus.valid ? 'valid' : 'invalid';
+        this.integrityStatus = storedStatus.isValid ? 'valid' : 'invalid';
         this.integrityVerifiedAt = storedStatus.verifiedAt;
         this.cdr.detectChanges();
       }
@@ -170,12 +170,20 @@ export class AppComponent implements OnInit {
   }
 
   downloadDb() {
-    this.dipService.downloadDebugDb();
+    this.dbService.exportDatabase();
   }
 
   async runIndexer() {
     try {
-      await this.indexerService.runIndexer();
+      await this.dbService.indexDirectory();
+      alert('Indicizzazione completata! Ora puoi cercare i file.');
+
+      // Carica i filtri dopo l'indicizzazione
+      await this.loadSearchKeys();
+
+      // Carica l'albero completo
+      this.fileTree = await this.dbService.getTreeFromDb();
+      this.cdr.detectChanges();
     } catch (error) {
       console.error('Error running indexer:', error);
       alert('Failed to import directory. Please check console for details.');

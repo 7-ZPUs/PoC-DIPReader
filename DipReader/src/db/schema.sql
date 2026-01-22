@@ -3,9 +3,11 @@ CREATE TABLE metadata(
     VARCHAR(255) meta_key NOT NULL,
     VARCHAR(255) meta_value NOT NULL,
     INTEGER document_id,
+    INTEGER file_id,
     CHAR(36) aip_uuid,
     CHAR(36) archival_process_uuid,
     FOREIGN KEY (document_id) REFERENCES document(id),
+    FOREIGN KEY (file_id) REFERENCES file(id),
     FOREIGN KEY (aip_uuid) REFERENCES aip(uuid),
     FOREIGN KEY (archival_process_uuid) REFERENCES archival_process(uuid),
     ENUM meta_type ('string', 'number', 'date') NOT NULL
@@ -37,7 +39,7 @@ CREATE TABLE aip(
 
 CREATE TABLE document_class(
     INTEGER id PRIMARY KEY,
-    VARCHAR(255) class_name NOT NULL
+    VARCHAR(255) class_name NOT NULL UNIQUE
 );
 
 CREATE TABLE archival_process(

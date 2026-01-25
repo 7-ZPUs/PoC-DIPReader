@@ -38,6 +38,11 @@
           <button *ngIf="isSearching" (click)="clearSearch()" class="btn-secondary">Reset</button>
         </div>
       </div>
+
+      <!-- Tempo di Esecuzione -->
+      <div *ngIf="searchExecutionTime !== null" class="search-stats">
+        Tempo di esecuzione: <strong>{{ searchExecutionTime.toFixed(2) }} ms</strong>
+      </div>
     </div>
 
     <hr>
@@ -89,7 +94,7 @@
       </div>
       
       <!-- Visualizzatore Metadati -->
-      <app-metadata-viewer [logicalPath]="selectedFile.path"></app-metadata-viewer>
+      <app-metadata-viewer [fileId]="selectedFile.fileId"></app-metadata-viewer>
     </div>
 
     <!-- Messaggio Nessun File Selezionato -->

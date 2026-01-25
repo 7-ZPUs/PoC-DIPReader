@@ -14,9 +14,8 @@ import { DatabaseService } from './database.service';
   styleUrls: ['./app.css']
 })
 export class AppComponent implements OnInit {
+  // Albero dei file e selezione
   fileTree: FileNode[] = [];
-
-  // --- PROPRIETÀ REINSERITE PER EVITARE L'ERRORE ---
   selectedFile: FileNode | null = null;
   metadata: any = null;
 
@@ -30,9 +29,11 @@ export class AppComponent implements OnInit {
   }> = [];
   filters: Filter[] = [];
   isSearching = false;
+  searchExecutionTime: number | null = null;
+  
+  // Stato verifica integrità
   integrityStatus: 'none' | 'loading' | 'valid' | 'invalid' | 'error' = 'none';
   integrityVerifiedAt: string | null = null;
-  // -------------------------------------------------
 
   constructor(
     private dipService: DipReaderService,
@@ -74,7 +75,16 @@ export class AppComponent implements OnInit {
     this.selectedFile = null;
     this.metadata = null;
 
+    // Avvia il timer
+    const startTime = performance.now();
+
     this.fileTree = await this.dbService.searchDocuments(this.searchName, this.filters);
+
+    // Calcola il tempo di esecuzione
+    const endTime = performance.now();
+    this.searchExecutionTime = endTime - startTime;
+
+    console.log(`Ricerca completata in ${this.searchExecutionTime.toFixed(2)} ms`);
     this.cdr.detectChanges();
   }
 
@@ -83,6 +93,7 @@ export class AppComponent implements OnInit {
     this.filters = [];
     this.fileTree = [];
     this.isSearching = false;
+    this.searchExecutionTime = null;
   }
 
   async handleNodeClick(node: FileNode) {
@@ -99,16 +110,22 @@ export class AppComponent implements OnInit {
       this.integrityStatus = 'none'; // Resetta lo stato della verifica per il nuovo file
       this.integrityVerifiedAt = null;
 
-      // Recupera i metadati in modo ASINCRONO dal database
-      const attributes = await this.dbService.getMetadataAttributes(node.path);
+      if (!node.fileId) {
+        console.error('File ID mancante per il nodo:', node);
+        this.metadata = { error: 'File ID non disponibile.' };
+        return;
+      }
+
+      // Recupera i metadati in modo ASINCRONO dal database usando fileId
+      const attributes = await this.dbService.getMetadataAttributes(node.fileId);
       // Converte array in oggetto per retrocompatibilità
       this.metadata = attributes.length > 0
         ? attributes.reduce((acc, attr) => ({ ...acc, [attr.key]: attr.value }), {})
         : { error: 'Metadati non trovati nel DB.' };
-      console.log(`Metadati per '${node.path}':`, this.metadata);
+      console.log(`Metadati per file ID ${node.fileId}:`, this.metadata);
 
       // Carica lo stato di integrità salvato, se disponibile
-      const storedStatus = await this.dbService.getIntegrityStatus(node.path);
+      const storedStatus = await this.dbService.getIntegrityStatus(node.fileId);
       if (storedStatus) {
         this.integrityStatus = storedStatus.isValid ? 'valid' : 'invalid';
         this.integrityVerifiedAt = storedStatus.verifiedAt;
@@ -117,22 +134,31 @@ export class AppComponent implements OnInit {
     }
   }
 
-  // --- FUNZIONI REINSERITE PER EVITARE L'ERRORE ---
   async openFile(node: FileNode) {
+    if (!node.fileId) {
+      alert('File ID non disponibile.');
+      return;
+    }
+
     // Recupera il percorso fisico corretto dal servizio
-    const physicalPath = await this.dipService.getPhysicalPathForFile(node.path);
+    const physicalPath = await this.dipService.getPhysicalPathForFile(node.fileId);
     if (physicalPath) {
       console.log(`Apertura percorso fisico: ${physicalPath}`);
       // Apre il file in una nuova scheda
       window.open(physicalPath, '_blank');
     } else {
-      console.error(`Impossibile trovare il percorso fisico per il percorso logico: ${node.path}`);
+      console.error(`Impossibile trovare il percorso fisico per il file ID: ${node.fileId}`);
       alert('File non trovato o percorso mancante.');
     }
   }
 
   async downloadFile(node: FileNode) {
-    const physicalPath = await this.dipService.getPhysicalPathForFile(node.path);
+    if (!node.fileId) {
+      alert('File ID non disponibile.');
+      return;
+    }
+
+    const physicalPath = await this.dipService.getPhysicalPathForFile(node.fileId);
     if (physicalPath) {
       const link = document.createElement('a');
       link.href = physicalPath;
@@ -147,10 +173,15 @@ export class AppComponent implements OnInit {
   }
 
   async checkIntegrity(node: FileNode) {
+    if (!node.fileId) {
+      alert('File ID non disponibile.');
+      return;
+    }
+
     this.integrityStatus = 'loading';
     this.integrityVerifiedAt = null;
     try {
-      const result = await this.dipService.verifyFileIntegrity(node.path);
+      const result = await this.dipService.verifyFileIntegrity(node.fileId);
       this.integrityStatus = result.valid ? 'valid' : 'invalid';
       this.integrityVerifiedAt = new Date().toISOString();
       this.cdr.detectChanges(); // Forza l'aggiornamento della UI prima dell'alert

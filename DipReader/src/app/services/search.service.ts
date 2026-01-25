@@ -15,7 +15,7 @@ export class SearchService {
    * @returns Lista di chiavi di metadati disponibili
    */
   async loadAvailableFilterKeys(): Promise<string[]> {
-    return await this.dbService.getAllMetadataKeys();
+    return await this.dbService.getAvailableMetadataKeys();
   }
 
   groupFilterKeys(keys: string[]): FilterOptionGroup[] {
@@ -40,17 +40,15 @@ export class SearchService {
   }
 
 
-  async searchByName(searchTerm: string): Promise<string[]> {
-    if (!searchTerm.trim()) return [];
-    return await this.dbService.searchNodesByName(searchTerm);
-  }
 
-
-  async applyFilters(filters: SearchFilter[]): Promise<string[]> {
+  async applyFilters(filters: SearchFilter[]): Promise<number[]> {
     if (filters.length === 0) return [];
     // Usa il metodo searchDocuments del database con filtri globali
     const results = await this.dbService.searchDocuments('', filters as any);
-    return results.map(node => node.path);
+    // Restituisce gli ID dei file, filtrando solo i nodi di tipo 'file'
+    return results
+      .filter(node => node.type === 'file' && node.fileId)
+      .map(node => node.fileId!);
   }
 
 

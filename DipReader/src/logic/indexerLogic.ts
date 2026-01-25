@@ -116,10 +116,10 @@ export class IndexerLogic {
     const aipRoot = (aipElement.getElementsByTagName('AiPRoot')[0]?.textContent || '').trim();
 
     // Insert AiP
-    const insertAipSql = `INSERT OR IGNORE INTO aip (uuid, document_class_id, archival_process_uuid) VALUES (?, ?, ?)`;
+    const insertAipSql = `INSERT OR IGNORE INTO aip (uuid, document_class_id, archival_process_uuid, root_path) VALUES (?, ?, ?, ?)`;
     this.db.exec({
       sql: insertAipSql,
-      bind: [aipUUID, documentClassId, processUUID]
+      bind: [aipUUID, documentClassId, processUUID, aipRoot]
     });
 
     // Process Documents
@@ -167,33 +167,33 @@ export class IndexerLogic {
     const metadata = filesElement.getElementsByTagName('Metadata')[0];
     const metadataPath = (metadata.textContent || '').trim();
     if (metadata) {
-      await this.insertFile(metadataPath, false, documentId);
+      await this.insertFile(currentPath, metadataPath, false, documentId);
     }
 
     // Process Primary file
     const primary = filesElement.getElementsByTagName('Primary')[0];
     if (primary) {
       const primaryPath = (primary.textContent || '').trim();
-      await this.insertFile(primaryPath, true, documentId);
+      await this.insertFile(currentPath, primaryPath, true, documentId);
     }
 
     // Process Attachments
     const attachments = filesElement.getElementsByTagName('Attachments');
     for (let i = 0; i < attachments.length; i++) {
       const attachmentPath = (attachments[i].textContent || '').trim();
-      await this.insertFile(attachmentPath, false, documentId);
+      await this.insertFile(currentPath, attachmentPath, false, documentId);
     }
 
     await this.processMetadataFile(`${currentPath}/${metadataPath.replace(/\.\//, '')}`, documentId);
   }
 
-  private async insertFile(relativePath: string, isMain: boolean, documentId: number): Promise<void> {
+  private async insertFile(root_path: string, relativePath: string, isMain: boolean, documentId: number): Promise<void> {
     if (!this.db) return;
 
-    const sql = `INSERT OR IGNORE INTO file (relative_path, is_main, document_id) VALUES (?, ?, ?)`;
+    const sql = `INSERT OR IGNORE INTO file (relative_path, is_main, document_id, root_path) VALUES (?, ?, ?, ?)`;
     this.db.exec({
       sql,
-      bind: [relativePath, isMain ? 1 : 0, documentId]
+      bind: [relativePath, isMain ? 1 : 0, documentId, root_path + '/' + relativePath.replace(/\.\//, '')]
     });
   }
 
@@ -335,6 +335,19 @@ export class IndexerLogic {
       bind: ['Note', Note?.textContent || '', documentId, 'string']
     });
 
+    let Impronta = null;
+    const documentoInformatico = xmlDoc.getElementsByTagName('DocumentoInformatico')[0];
+    if (documentoInformatico) {
+      const idDoc = documentoInformatico.getElementsByTagName('IdDoc')[0];
+      if (idDoc) {
+        Impronta = idDoc.getElementsByTagName('Impronta')[0];
+      }
+    }
+    this.db?.exec({
+      sql: query,
+      bind: ['Impronta', Impronta?.textContent || '', documentId, 'string']
+    });
+
     query = 'INSERT OR IGNORE INTO metadata(meta_key, meta_value, file_id, meta_type) VALUES (?, ?, ?, ?)';
 
     const attachments = xmlDoc.getElementsByTagName('IndiceAllegati');
@@ -344,7 +357,8 @@ export class IndexerLogic {
       let attachmentId = IdDoc?.getElementsByTagName('Identificativo')[0]?.textContent || '';
       if (attachmentId) {
         let description = attachment.getElementsByTagName('Descrizione')[0]?.textContent || '';
-        let id_query = 'SELECT id FROM file WHERE relative_path LIKE ?';
+        let Impronta = attachment.getElementsByTagName('Impronta')[0]?.textContent || '';
+        let id_query = 'SELECT id FROM file WHERE relative_path LIKE ?'; // Only relative path is not a problem here since the attachment paths include unique IDs
         this.db?.exec({
           sql: id_query,
           bind: [`%${attachmentId}%`],
@@ -356,6 +370,10 @@ export class IndexerLogic {
         this.db?.exec({
           sql: query,
           bind: [`Descrizione`, description, attachmentId, 'string']
+        });
+        this.db?.exec({
+          sql: query,
+          bind: [`Impronta`, Impronta || '', attachmentId, 'string']
         });
       }
     }

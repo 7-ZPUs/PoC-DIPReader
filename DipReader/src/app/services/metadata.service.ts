@@ -9,8 +9,8 @@ import { DatabaseService } from '../database.service';
 export class MetadataService {
   constructor(private dbService: DatabaseService) {}
 
-  async getMetadata(logicalPath: string): Promise<any> {
-    const attributes = await this.dbService.getMetadataAttributes(logicalPath);
+  async getMetadata(fileId: number): Promise<any> {
+    const attributes = await this.dbService.getMetadataAttributes(fileId);
     if (attributes.length === 0) {
       return { error: 'Metadati non trovati nel DB.' };
     }
@@ -18,19 +18,19 @@ export class MetadataService {
     return attributes.reduce((acc, attr) => ({ ...acc, [attr.key]: attr.value }), {});
   }
 
-  async getMetadataValue(logicalPath: string, key: string): Promise<string | undefined> {
-    const metadata = await this.getMetadata(logicalPath);
+  async getMetadataValue(fileId: number, key: string): Promise<string | undefined> {
+    const metadata = await this.getMetadata(fileId);
     const value = this.dbService.findValueByKey(metadata, key);
     return value || undefined;
   }
 
 
-  async getExpectedHash(logicalPath: string): Promise<string | null> {
-    const hash = await this.getMetadataValue(logicalPath, 'Impronta');
+  async getExpectedHash(fileId: number): Promise<string | null> {
+    const hash = await this.getMetadataValue(fileId, 'Impronta');
     return hash || null;
   }
 
-  async getMetadataAttributes(logicalPath: string): Promise<Array<{ key: string; value: string }>> {
-    return await this.dbService.getMetadataAttributes(logicalPath);
+  async getMetadataAttributes(fileId: number): Promise<Array<{ key: string; value: string }>> {
+    return await this.dbService.getMetadataAttributes(fileId);
   }
 }

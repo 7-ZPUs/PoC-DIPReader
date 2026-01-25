@@ -1,5 +1,5 @@
-<div class="metadata-container" *ngIf="logicalPath; else noSelection">
-  <h3>Metadati: {{ logicalPath }}</h3>
+<div class="metadata-container" *ngIf="fileId; else noSelection">
+  <h3>Metadati: {{ fileId }}</h3>
   
   <div *ngIf="loading" class="loading">Caricamento...</div>
   

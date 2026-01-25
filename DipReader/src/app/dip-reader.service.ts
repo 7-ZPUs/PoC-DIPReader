@@ -5,10 +5,10 @@ import { MetadataService } from './services/metadata.service';
 
 export interface FileNode {
   name: string;
-  path: string;
   type: 'folder' | 'file';
   children: FileNode[];
   expanded?: boolean;
+  fileId?: number; // ID del file nel database (solo per nodi di tipo 'file')
 }
 
 /**
@@ -26,8 +26,8 @@ export class DipReaderService {
   /**
    * Recupera i metadati per un file dal database.
    */
-  public async getMetadataForFile(logicalPath: string): Promise<any> {
-    const attributes = await this.dbService.getMetadataAttributes(logicalPath);
+  public async getMetadataForFile(fileId: number): Promise<any> {
+    const attributes = await this.dbService.getMetadataAttributes(fileId);
     if (attributes.length === 0) {
       return { error: 'Metadati non trovati nel DB.' };
     }
@@ -38,20 +38,20 @@ export class DipReaderService {
   /**
    * Recupera il percorso fisico web-accessible per un file dal database.
    */
-  public async getPhysicalPathForFile(logicalPath: string): Promise<string | undefined> {
-    return this.dbService.getPhysicalPathFromDb(logicalPath);
+  public async getPhysicalPathForFile(fileId: number): Promise<string | undefined> {
+    return this.dbService.getPhysicalPathFromDb(fileId);
   }
 
   /**
    * Verifica l'integrità di un file scaricandolo, calcolando l'hash SHA-256
    * e confrontandolo con quello memorizzato nei metadati
    */
-  public async verifyFileIntegrity(logicalPath: string): Promise<{ valid: boolean, calculated: string, expected: string }> {
-    const physicalPath = await this.getPhysicalPathForFile(logicalPath);
+  public async verifyFileIntegrity(fileId: number): Promise<{ valid: boolean, calculated: string, expected: string }> {
+    const physicalPath = await this.getPhysicalPathForFile(fileId);
     if (!physicalPath) throw new Error('File fisico non trovato.');
 
     // Recupera l'hash atteso dai metadati
-    const expectedHash = await this.metadataService.getExpectedHash(logicalPath);
+    const expectedHash = await this.metadataService.getExpectedHash(fileId);
     if (!expectedHash) {
       throw new Error('Impronta crittografica (Hash) non trovata nei metadati.');
     }
@@ -70,8 +70,8 @@ export class DipReaderService {
   /**
    * Recupera lo stato di integrità precedentemente salvato per un file
    */
-  public async getStoredIntegrityStatus(logicalPath: string): Promise<{ valid: boolean, calculated: string, expected: string, verifiedAt: string } | null> {
-    const stored = await this.dbService.getIntegrityStatus(logicalPath);
+  public async getStoredIntegrityStatus(fileId: number): Promise<{ valid: boolean, calculated: string, expected: string, verifiedAt: string } | null> {
+    const stored = await this.dbService.getIntegrityStatus(fileId);
     if (!stored) return null;
     
     return {

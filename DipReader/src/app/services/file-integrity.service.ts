@@ -26,17 +26,17 @@ export class FileIntegrityService {
     return btoa(String.fromCharCode(...hashArray));
   }
 
-  async saveVerificationResult(logicalPath: string, result: IntegrityCheckResult): Promise<void> {
+  async saveVerificationResult(fileId: number, result: IntegrityCheckResult): Promise<void> {
     await this.dbService.saveIntegrityStatus(
-      logicalPath,
+      fileId,
       result.isValid,
       result.calculatedHash,
       result.expectedHash
     );
   }
 
-  async getStoredStatus(logicalPath: string): Promise<SavedIntegrityStatus | null> {
-    const stored = await this.dbService.getIntegrityStatus(logicalPath);
+  async getStoredStatus(fileId: number): Promise<SavedIntegrityStatus | null> {
+    const stored = await this.dbService.getIntegrityStatus(fileId);
     return stored ? {
       isValid: stored.isValid,
       calculatedHash: stored.calculatedHash,

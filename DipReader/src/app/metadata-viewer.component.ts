@@ -10,19 +10,19 @@ import { DatabaseService } from './database.service';
   styleUrls: ['./metadata-viewer.component.css']
 })
 export class MetadataViewerComponent implements OnChanges {
-  @Input() logicalPath: string | null = null;
+  @Input() fileId: number | undefined = undefined;
   attributes: { key: string, value: string }[] = [];
   loading = false;
 
   constructor(private dbService: DatabaseService, private cdr: ChangeDetectorRef) {}
 
   async ngOnChanges(changes: SimpleChanges) {
-    if (changes['logicalPath']) {
-      if (this.logicalPath) {
+    if (changes['fileId']) {
+      if (this.fileId) {
         this.loading = true;
         this.cdr.detectChanges(); // Forza l'aggiornamento per mostrare "Caricamento..."
         try {
-          this.attributes = await this.dbService.getMetadataAttributes(this.logicalPath);
+          this.attributes = await this.dbService.getMetadataAttributes(this.fileId);
         } catch (err) {
           console.error('Errore recupero metadati:', err);
           this.attributes = [];

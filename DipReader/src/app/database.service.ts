@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { FileNode } from './dip-reader.service';
 import { FilterManager, Filter } from './filter-manager';
+import { filter } from 'rxjs';
 
 /**
  * Servizio per la gestione del database SQLite tramite Web Worker
@@ -230,45 +231,49 @@ export class DatabaseService {
 
   async getTreeFromDb(): Promise<FileNode[]> {
     // Query che recupera la gerarchia completa: DocumentClass -> AiP -> Document -> File
+    // Usa IDs e relazioni invece di paths
     const rows = await this.executeQuery<{
+      class_id: number;
       class_name: string;
       aip_uuid: string;
+      document_id: number;
       document_root_path: string;
+      file_id: number;
       file_relative_path: string;
     }[]>(`
       SELECT 
+        dc.id as class_id,
         dc.class_name,
         a.uuid as aip_uuid,
+        d.id as document_id,
         d.root_path as document_root_path,
+        f.id as file_id,
         f.relative_path as file_relative_path
       FROM document_class dc
       LEFT JOIN aip a ON dc.id = a.document_class_id
       LEFT JOIN document d ON a.uuid = d.aip_uuid
       LEFT JOIN file f ON d.id = f.document_id
-      ORDER BY dc.class_name, a.uuid, d.root_path, f.relative_path
+      ORDER BY dc.id, a.uuid, d.id, f.id
     `);
-    console.log(rows);
-
     return this.buildHierarchicalTree(rows);
   }
 
-  async getPhysicalPathFromDb(logicalPath: string): Promise<string | undefined> {
-    // Nel nuovo sistema, il percorso fisico è costruito dal file system handle
-    // Per ora restituiamo il percorso relativo stesso
-    const rows = await this.executeQuery<{ relative_path: string }[]>(
-      'SELECT relative_path FROM file WHERE relative_path = ?',
-      [logicalPath]
+  async getPhysicalPathFromDb(fileId: number): Promise<string | undefined> {
+    // Recupera il percorso fisico usando l'ID del file
+    const rows = await this.executeQuery<{ root_path: string }[]>(
+      'SELECT root_path FROM file WHERE id = ?',
+      [fileId]
     );
 
-    return rows.length > 0 ? rows[0].relative_path : undefined;
+    return rows.length > 0 ? rows[0].root_path : undefined;
   }
 
-  async saveIntegrityStatus(logicalPath: string, isValid: boolean, calculatedHash: string, expectedHash: string): Promise<void> {
+  async saveIntegrityStatus(fileId: number, isValid: boolean, calculatedHash: string, expectedHash: string): Promise<void> {
     // TODO: Implementare tabella file_integrity nello schema
     console.warn('[DatabaseService] saveIntegrityStatus non ancora implementato nel nuovo schema');
   }
 
-  async getIntegrityStatus(logicalPath: string): Promise<{ isValid: boolean, calculatedHash: string, expectedHash: string, verifiedAt: string } | null> {
+  async getIntegrityStatus(fileId: number): Promise<{ isValid: boolean, calculatedHash: string, expectedHash: string, verifiedAt: string } | null> {
     // TODO: Implementare tabella file_integrity nello schema
     return null;
   }
@@ -276,32 +281,33 @@ export class DatabaseService {
   /**
    * Recupera gli attributi metadati indicizzati per una visualizzazione pulita (Key-Value).
    */
-  async getMetadataAttributes(logicalPath: string): Promise<{ key: string; value: string }[]> {
+  async getMetadataAttributes(fileId: number): Promise<{ key: string; value: string }[]> {
     // Verifica se il file è principale o allegato
-    const fileInfo = await this.executeQuery<{ is_main: number }[]>(
-      'SELECT is_main FROM file WHERE relative_path = ?',
-      [logicalPath]
+    const fileInfo = await this.executeQuery<{ is_main: number; document_id: number }[]>(
+      'SELECT is_main, document_id FROM file WHERE id = ?',
+      [fileId]
     );
     
     if (fileInfo.length === 0) {
-      console.warn(`[DatabaseService] File non trovato per getMetadataAttributes: ${logicalPath}`);
+      console.warn(`[DatabaseService] File non trovato per getMetadataAttributes: ${fileId}`);
       return [];
     }
     
     const isMain = fileInfo[0].is_main;
+    const documentId = fileInfo[0].document_id;
     let rows;
     
     if (!isMain) {
       // Allegato: usa file_id
       rows = await this.executeQuery<{ meta_key: string; meta_value: string }[]>(
-        'SELECT meta_key, meta_value FROM metadata WHERE file_id = (SELECT id FROM file WHERE relative_path = ?) ORDER BY meta_key',
-        [logicalPath]
+        'SELECT DISTINCT meta_key, meta_value FROM metadata WHERE file_id = ? ORDER BY meta_key',
+        [fileId]
       );
     } else {
-      // File principale: usa document_id
+      // File principale: usa document_id con DISTINCT per evitare duplicati
       rows = await this.executeQuery<{ meta_key: string; meta_value: string }[]>(
-        'SELECT meta_key, meta_value FROM metadata WHERE document_id IN (SELECT document_id FROM file WHERE relative_path = ?) ORDER BY meta_key',
-        [logicalPath]
+        'SELECT DISTINCT meta_key, meta_value FROM metadata WHERE document_id = ? ORDER BY meta_key',
+        [documentId]
       );
     }
 
@@ -344,13 +350,17 @@ export class DatabaseService {
   /**
    * Cerca documenti combinando ricerca per nome e filtri sui metadati.
    * Mantiene la gerarchia DocumentClass -> AiP -> Document -> File
+   * Usa IDs e relazioni invece di paths
    */
   async searchDocuments(nameQuery: string, filters: Filter[]): Promise<FileNode[]> {
     let sql_mains = `
       SELECT 
+        dc.id as class_id,
         dc.class_name,
         a.uuid as aip_uuid,
+        d.id as document_id,
         d.root_path as document_root_path,
+        f.id as file_id,
         f.relative_path as file_relative_path
       FROM file f
       INNER JOIN document d ON f.document_id = d.id
@@ -358,22 +368,24 @@ export class DatabaseService {
       INNER JOIN document_class dc ON a.document_class_id = dc.id
     `;
     let sql_attachments = `SELECT 
+        dc.id as class_id,
         dc.class_name,
         a.uuid as aip_uuid,
+        d.id as document_id,
         d.root_path as document_root_path,
+        f.id as file_id,
         f.relative_path as file_relative_path
       FROM file f
       INNER JOIN document d ON f.document_id = d.id
       INNER JOIN aip a ON d.aip_uuid = a.uuid
-      INNER JOIN document_class dc ON a.document_class_id = dc.id
-    `;
+      INNER JOIN document_class dc ON a.document_class_id = dc.id`;
 
     const params: any[] = [];
     const conditions: string[] = [];
 
     // Filtro per nome file
     if (nameQuery && nameQuery.trim() !== '') {
-      conditions.push('f.relative_path LIKE ?');
+      conditions.push(' f.relative_path LIKE ?');
       params.push(`%${nameQuery.trim()}%`);
     }
 
@@ -389,27 +401,38 @@ export class DatabaseService {
       });
     }
 
+    if(filters.length === 0) {
+      sql_mains += ' WHERE f.is_main = 1 AND';
+      sql_attachments += ' WHERE f.is_main = 0 AND';
+    }
+
     if (conditions.length > 0) {
       sql_mains += conditions.join(' AND ');
       sql_attachments += conditions.join(' AND ');
     }
 
-    sql_mains += ' ORDER BY dc.class_name, a.uuid, d.root_path, f.relative_path';
-    sql_attachments += ' ORDER BY dc.class_name, a.uuid, d.root_path, f.relative_path';
+    sql_mains += ' ORDER BY dc.id, a.uuid, d.id, f.id';
+    sql_attachments += ' ORDER BY dc.id, a.uuid, d.id, f.id';
 
     console.log('query:', sql_mains, 'params:', params);
 
     let rows = await this.executeQuery<{
+      class_id: number;
       class_name: string;
       aip_uuid: string;
+      document_id: number;
       document_root_path: string;
+      file_id: number;
       file_relative_path: string;
     }[]>(sql_mains, params);
 
     const attachmentRows = await this.executeQuery<{
+      class_id: number;
       class_name: string;
       aip_uuid: string;
+      document_id: number;
       document_root_path: string;
+      file_id: number;
       file_relative_path: string;
     }[]>(sql_attachments, params);
 
@@ -432,75 +455,74 @@ export class DatabaseService {
   /**
    * Costruisce un albero gerarchico basato sulla struttura reale del database:
    * DocumentClass -> AiP -> Document -> File
+   * Usa IDs e relazioni del database invece di confronti basati su path
    */
   private buildHierarchicalTree(rows: Array<{
+    class_id: number;
     class_name: string;
     aip_uuid: string;
+    document_id: number;
     document_root_path: string;
+    file_id: number;
     file_relative_path: string;
   }>, expandAll = false): FileNode[] {
     const root: FileNode[] = [];
-    const classMap = new Map<string, FileNode>();
+    const classMap = new Map<number, FileNode>();
     const aipMap = new Map<string, FileNode>();
-    const documentMap = new Map<string, FileNode>();
+    const documentMap = new Map<number, FileNode>();
 
     rows.forEach(row => {
-      // 1. Livello DocumentClass
-      let classNode = classMap.get(row.class_name);
+      // 1. Livello DocumentClass (usa class_id come chiave)
+      let classNode = classMap.get(row.class_id);
       if (!classNode) {
         classNode = {
           name: row.class_name || 'Classe Documentale',
-          path: `class:${row.class_name}`,
           type: 'folder',
           children: [],
           expanded: expandAll
         };
-        classMap.set(row.class_name, classNode);
+        classMap.set(row.class_id, classNode);
         root.push(classNode);
       }
 
-      // 2. Livello AiP (Archival Information Package)
-      const aipKey = `${row.class_name}::${row.aip_uuid}`;
-      let aipNode = aipMap.get(aipKey);
+      // 2. Livello AiP (usa aip_uuid come chiave)
+      let aipNode = aipMap.get(row.aip_uuid);
       if (!aipNode && row.aip_uuid) {
         // Usa un nome più leggibile per l'AiP (primi 8 caratteri UUID)
         const aipDisplayName = `AiP ${row.aip_uuid.substring(0, 8)}`;
         aipNode = {
           name: aipDisplayName,
-          path: `aip:${row.aip_uuid}`,
           type: 'folder',
           children: [],
           expanded: expandAll
         };
-        aipMap.set(aipKey, aipNode);
+        aipMap.set(row.aip_uuid, aipNode);
         classNode.children.push(aipNode);
       }
 
-      // 3. Livello Document
-      const docKey = `${aipKey}::${row.document_root_path}`;
-      let documentNode = documentMap.get(docKey);
-      if (!documentNode && row.document_root_path && aipNode) {
+      // 3. Livello Document (usa document_id come chiave)
+      let documentNode = documentMap.get(row.document_id);
+      if (!documentNode && row.document_id && aipNode) {
         // Estrae il nome del documento dal path
-        const docName = row.document_root_path.split('/').pop() || row.document_root_path;
+        const docName = row.document_root_path?.split('/').pop() || row.document_root_path || `Document ${row.document_id}`;
         documentNode = {
           name: docName,
-          path: `doc:${row.document_root_path}`,
           type: 'folder',
           children: [],
           expanded: expandAll
         };
-        documentMap.set(docKey, documentNode);
+        documentMap.set(row.document_id, documentNode);
         aipNode.children.push(documentNode);
       }
 
-      // 4. Livello File (foglia)
-      if (row.file_relative_path && documentNode) {
+      // 4. Livello File (foglia) - usa file_id per evitare duplicati
+      if (row.file_id && row.file_relative_path && documentNode) {
         const fileName = row.file_relative_path.split('/').pop() || row.file_relative_path;
         const fileNode: FileNode = {
           name: fileName,
-          path: row.file_relative_path, // Usa il percorso relativo completo come ID
           type: 'file',
-          children: []
+          children: [],
+          fileId: row.file_id // ID univoco del file nel database
         };
         documentNode.children.push(fileNode);
       }

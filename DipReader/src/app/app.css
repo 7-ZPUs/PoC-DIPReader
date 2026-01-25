@@ -141,6 +141,20 @@ li {
 }
 
 /* ============================================
+   Statistiche Ricerca
+   ============================================ */
+.search-stats {
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  color: #155724;
+  text-align: center;
+}
+
+/* ============================================
    Pulsanti
    ============================================ */
 .btn-small {

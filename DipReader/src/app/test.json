@@ -1,0 +1,109 @@
+{
+  "?xml": { "@_version": "1.0", "@_encoding": "UTF-8", "@_standalone": "no" },
+  "Document": {
+    "DocumentoInformatico": {
+      "IdDoc": {
+        "ImprontaCrittograficaDelDocumento": {
+          "Impronta": "nXoAJXHYvtOTVIKTTl7eelix4hlofWdSRIlYpSuqGq8=",
+          "Algoritmo": "SHA-256"
+        },
+        "Identificativo": "39e0cf29-10d2-40c1-af00-ec098cb8c98a"
+      },
+      "ModalitaDiFormazione": "creazione tramite utilizzo di strumenti software che assicurino la produzione di documenti nei formati previsti in allegato 2",
+      "TipologiaDocumentale": "Note Spese",
+      "DatiDiRegistrazione": {
+        "TipologiaDiFlusso": "U",
+        "TipoRegistro": {
+          "ProtocolloOrdinario_ProtocolloEmergenza": {
+            "TipoRegistro": "ProtocolloOrdinario\\ProtocolloEmergenza",
+            "DataProtocollazioneDocumento": "2025-11-11",
+            "OraProtocollazioneDocumento": "15:15:00",
+            "NumeroProtocolloDocumento": 8885588899,
+            "CodiceRegistro": "ID444458"
+          }
+        }
+      },
+      "Soggetti": {
+        "Ruolo": [
+          {
+            "Mittente": {
+              "TipoRuolo": "Mittente",
+              "PF": {
+                "Cognome": "Mario",
+                "Nome": "Rossi",
+                "IndirizziDigitaliDiRiferimento": "mariorossi@gmail.com"
+              }
+            }
+          },
+          {
+            "Destinatario": {
+              "TipoRuolo": "Destinatario",
+              "PG": {
+                "DenominazioneOrganizzazione": "Acme S.r.l",
+                "CodiceFiscale_PartitaIva": 88559875558,
+                "DenominazioneUfficio": "Ufficio Amministrazione",
+                "IndirizziDigitaliDiRiferimento": "amministrazione@pec.it"
+              }
+            }
+          },
+          {
+            "SoggettoCheEffettuaLaRegistrazione": {
+              "TipoRuolo": "Soggetto Che Effettua La Registrazione",
+              "PG": {
+                "DenominazioneOrganizzazione": "ARK|CL01| ARK SRL",
+                "CodiceFiscale_PartitaIva": 1
+              }
+            }
+          }
+        ]
+      },
+      "ChiaveDescrittiva": { "Oggetto": "nota spesa X" },
+      "Allegati": { "NumeroAllegati": 0 },
+      "Classificazione": { "Descrizione": "" },
+      "Riservato": false,
+      "IdentificativoDelFormato": { "Formato": "image/png" },
+      "Verifica": {
+        "FirmatoDigitalmente": false,
+        "SigillatoElettronicamente": false,
+        "MarcaturaTemporale": false,
+        "ConformitaCopieImmagineSuSupportoInformatico": false
+      },
+      "Agg": "",
+      "NomeDelDocumento": "Nota Spesa A",
+      "VersioneDelDocumento": 1,
+      "TempoDiConservazione": 5
+    },
+    "CustomMetadata": {
+      "data_inizio": "2025-10-06",
+      "data_fine": "2025-11-11",
+      "identificativo_sistema_di_origine": "ID_68566",
+      "@_cmLanguage": "it",
+      "@_cmSchemaUri": "http://archiverse.it/archimemo/v3/CustomMetadata.xsd",
+      "@_cmSchemaVersion": "3",
+      "@_cmValidFrom": "2025-09-24T22:00:00Z"
+    },
+    "ArchimemoData": {
+      "DocumentInformation": {
+        "PreservationProcessUUID": "28a27fd3-6787-47ad-8ef5-c14b300309c4",
+        "PreservationProcessDate": "2025-11-11",
+        "DocumentUUID": "39e0cf29-10d2-40c1-af00-ec098cb8c98a",
+        "FilesCount": 1,
+        "TotalSize": { "#text": 3103314, "@_unit": "bytes" }
+      },
+      "FileInformation": {
+        "FileUUID": "39e0cf29-10d2-40c1-af00-ec098cb8c98a",
+        "FileLocalName": "./Schermata del 2025-11-11 16-17-46.png",
+        "FileSize": { "#text": 3103314, "@_unit": "bytes" },
+        "@_customerHasDeclaredHash": "true",
+        "@_isPrimary": "true",
+        "@_originalFileName": "Schermata del 2025-11-11 16-17-46.png"
+      },
+      "@_adLanguage": "en",
+      "@_adSchemaUri": "http://archiverse.it/archimemo/v1/ArchimemoData.xsd",
+      "@_adSchemaVersion": "1",
+      "@_adValidFrom": "2025-09-24T22:00:00Z"
+    },
+    "@_xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+    "@_xsi:noNamespaceSchemaLocation": "DocumentMetadata.xsd"
+  }
+}

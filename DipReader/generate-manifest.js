@@ -34,40 +34,25 @@ try {
 
     // --- GESTIONE SQLITE WASM ---
     // Cerchiamo il file in più percorsi possibili per robustezza
-    const possibleWasmPaths = [
-        // Percorso standard npm
-        path.join(__dirname, 'node_modules', '@sqlite.org', 'sqlite-wasm', 'jswasm', 'sqlite3.wasm'),
-        // Percorso standard per versioni recenti (es. 3.51.1)
-        path.join(__dirname, 'node_modules', '@sqlite.org', 'sqlite-wasm', 'sqlite-wasm', 'jswasm', 'sqlite3.wasm'),
-        // Percorso alternativo/vecchio
-        path.join(__dirname, 'node_modules', '@sqlite.org', 'sqlite-wasm', 'dist', 'sqlite3.wasm')
-    ];
-
-    const sourceWasm = possibleWasmPaths.find(p => fs.existsSync(p));
-    const destWasm = path.join(publicDir, 'sqlite3.wasm');
+    // --- GESTIONE SQLITE (CUSTOM BUILD) ---
+    // Usiamo la versione custom che include già sqlite-vec al suo interno
+    const sourceWasm = path.join(__dirname, 'wasm-source', 'sqlite3.wasm');
+    const sourceJs = path.join(__dirname, 'wasm-source', 'sqlite3.mjs');
     
-    if (sourceWasm) {
-        fs.copyFileSync(sourceWasm, destWasm);
-        console.log(`✅ File 'sqlite3.wasm' copiato in 'public' da: ${sourceWasm}`);
+    const destWasm = path.join(publicDir, 'sqlite3.wasm');
+    const destJs = path.join(publicDir, 'sqlite3.mjs');
 
-        // NUOVO: Copia anche il file JS (ES Module) per caricarlo dinamicamente
-        // Assumiamo che il file JS si trovi nella stessa cartella del WASM e si chiami 'sqlite3.mjs'
-        const sourceJs = path.join(path.dirname(sourceWasm), 'sqlite3.mjs');
-        const destJs = path.join(publicDir, 'sqlite3.mjs');
-        
-        if (fs.existsSync(sourceJs)) {
-            fs.copyFileSync(sourceJs, destJs);
-            console.log(`✅ File 'sqlite3.mjs' copiato in 'public'`);
-        } else {
-            console.warn(`⚠️  ATTENZIONE: File 'sqlite3.mjs' non trovato in '${path.dirname(sourceWasm)}'.`);
-        }
+    if (fs.existsSync(sourceWasm) && fs.existsSync(sourceJs)) {
+        fs.copyFileSync(sourceWasm, destWasm);
+        fs.copyFileSync(sourceJs, destJs);
+        console.log(`✅ Core SQLite+Vec copiato in 'public' da 'wasm-source'`);
     } else {
-        console.error(`❌ ERRORE CRITICO: Impossibile trovare 'sqlite3.wasm'.`);
-        console.error(`   Ho cercato in:`);
-        possibleWasmPaths.forEach(p => console.error(`   - ${p}`));
-        console.error(`   Esegui 'npm install' per ripristinare le dipendenze.`);
+        console.error(`❌ ERRORE: File sqlite3.wasm o sqlite3.mjs mancanti in 'wasm-source'.`);
+        console.error(`   Scaricali da: https://cdn.jsdelivr.net/npm/sqlite-vec-wasm-demo@latest/`);
         process.exit(1);
     }
+    
+    // --- NOTA: Non serve più copiare vec0.wasm separatamente perché è incluso in sqlite3.wasm! ---
 } catch (error) {
     console.error(`❌ Errore durante la generazione del file manifest: ${error.message}`);
     process.exit(1); // Esce con un codice di errore per bloccare build fallate

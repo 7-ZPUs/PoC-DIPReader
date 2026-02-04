@@ -27,6 +27,11 @@
               },
               {
                 "glob": "**/*",
+                "input": "src/assets",
+                "output": "/assets"
+              },
+              {
+                "glob": "**/*",
                 "input": "node_modules/@sqlite.org/sqlite-wasm/sqlite-wasm/jswasm",
                 "output": "/"
               }

@@ -8,7 +8,89 @@ import { SearchFilter, FilterOptionGroup } from '../models/search-filter';
  */
 @Injectable({ providedIn: 'root' })
 export class SearchService {
-  constructor(private dbService: DatabaseService) {}
+  private worker: Worker | undefined;
+  private isWorkerReady: boolean = false;
+  constructor(private dbService: DatabaseService) {
+    this.initWorker();
+  }
+
+  private initWorker() {
+    if (typeof Worker !== 'undefined') {
+      this.worker = new Worker(new URL('../db.worker.ts', import.meta.url));
+     this.worker.onmessage = ({ data }) => {
+        if (data.type === 'INIT_RESULT') {
+          this.isWorkerReady = true;
+          console.log('✅ AI Worker: Pronto (Modello caricato in memoria)');
+        } else if (data.type === 'ERROR') {
+          console.error('❌ AI Worker Error:', data.error);
+        }
+      };
+      this.worker.postMessage({ 
+        type: 'INIT', 
+        payload: { wasmUrl: 'assets/sqlite3.wasm' } 
+      });
+    } else {
+      console.error('Web Workers non supportati.');
+    }
+  }
+
+  async searchSemantic(query: string): Promise<{id: number, score: number}[]> {
+    if (!this.worker || !this.isWorkerReady) {
+      console.warn('Worker non pronto, salto ricerca semantica.');
+      return [];
+    }
+
+    return new Promise((resolve, reject) => {
+      // Handler temporaneo per catturare la risposta specifica di questa ricerca
+      const handler = ({ data }: MessageEvent) => {
+        if (data.type === 'SEARCH_RESULT') {
+          this.worker?.removeEventListener('message', handler);
+          resolve(data.results); // Ritorna [{id: 1, score: 0.12}, ...]
+        }
+      };
+      
+      this.worker!.addEventListener('message', handler);
+      this.worker!.postMessage({ type: 'SEARCH', payload: { query } });
+    });
+  }
+
+  indexDocument(docId: number, metadataCombinedText: string) {
+    if (this.worker) {
+      this.worker.postMessage({
+        type: 'INDEX_METADATA', // Assicurati che il worker gestisca questo case
+        payload: { id: docId, text: metadataCombinedText }
+      });
+    }
+  }
+
+ async reindexAll(): Promise<void> {
+    // 1. Catturiamo il riferimento al worker in una variabile locale.
+    // Questo dice a TypeScript: "Usa QUESTA istanza specifica che so che esiste ora".
+    const worker = this.worker;
+
+    // Se non esiste, usciamo subito
+    if (!worker) return;
+
+    console.log('Service: Richiesta rigenerazione indici...');
+    
+    // Usiamo la variabile locale 'worker' invece di 'this.worker'
+    worker.postMessage({ type: 'REINDEX_ALL' });
+
+    return new Promise((resolve) => {
+      const handler = ({ data }: MessageEvent) => {
+        if (data.type === 'REINDEX_COMPLETE') {
+          // TypeScript ora è felice perché 'worker' è una const definita sopra
+          worker.removeEventListener('message', handler);
+          console.log('✅ Service: Re-indicizzazione completata.');
+          resolve();
+        }
+      };
+      
+      worker.addEventListener('message', handler);
+    });
+  }
+
+  
 
   /**
    * Carica le chiavi disponibili per i filtri da tutti i file
@@ -41,14 +123,29 @@ export class SearchService {
 
 
 
-  async applyFilters(filters: SearchFilter[]): Promise<number[]> {
-    if (filters.length === 0) return [];
-    // Usa il metodo searchDocuments del database con filtri globali
-    const results = await this.dbService.searchDocuments('', filters as any);
-    // Restituisce gli ID dei file, filtrando solo i nodi di tipo 'file'
-    return results
+  async applyFilters(filters: SearchFilter[], freeTextQuery?: string): Promise<number[]> {
+
+    let semanticIds: number[] | null = null;
+    
+    if (freeTextQuery && freeTextQuery.trim().length > 2) {
+      console.log(`Avvio ricerca semantica per: "${freeTextQuery}"`);
+      const semanticResults = await this.searchSemantic(freeTextQuery);
+      semanticIds = semanticResults.map(r => r.id);
+      console.log('Risultati semantici (IDs):', semanticIds);
+    }
+    const dbResults = await this.dbService.searchDocuments('', filters as any);
+    const filterIds = dbResults
       .filter(node => node.type === 'file' && node.fileId)
       .map(node => node.fileId!);
+
+    if (semanticIds !== null) {
+      if (filters.length > 0) {
+        return semanticIds.filter(id => filterIds.includes(id));
+      } else {
+        return semanticIds;
+      }
+    }
+    return filterIds;
   }
 
 

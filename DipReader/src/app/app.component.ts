@@ -6,6 +6,8 @@ import { MetadataViewerComponent } from './metadata-viewer.component';
 import { Filter } from './filter-manager';
 import { DatabaseService } from './database.service';
 
+import { SearchService } from './services/search.service';
+
 @Component({
   selector: 'app-root',
   standalone: true,
@@ -38,9 +40,18 @@ export class AppComponent implements OnInit {
   constructor(
     private dipService: DipReaderService,
     private cdr: ChangeDetectorRef,
-    private dbService: DatabaseService
-  ) { }
+    private dbService: DatabaseService,
 
+    private searchService: SearchService
+  ) { 
+    console.log('App avviata. Attendo 5 secondi prima di indicizzare per l\'AI...');
+    
+    setTimeout(() => {
+      this.searchService.reindexAll().then(() => {
+        console.log('Test indicizzazione completato. Ora puoi rimuovere questo blocco.');
+      });
+    }, 5000); 
+  }
   ngOnInit() {
     //
   }

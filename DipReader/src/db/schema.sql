@@ -274,3 +274,15 @@ CREATE TABLE IF NOT EXISTS phase (
     administrative_procedure_id INTEGER,
     FOREIGN KEY (administrative_procedure_id) REFERENCES administrative_procedure(id)
 );
+
+--semantic search
+CREATE VIRTUAL TABLE IF NOT EXISTS document_vec USING vec0(
+    document_id INTEGER PRIMARY KEY,
+    embedding float[768]
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS document_fts USING fts5(
+    document_id UNINDEXED,
+    combined_text,
+    tokenize='trigram'
+);

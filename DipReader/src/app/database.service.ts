@@ -594,4 +594,41 @@ export class DatabaseService {
   > {
     return await this.getGroupedFilterKeys();
   }
+
+  async getAllDocumentsForEmbedding(): Promise<Array<{id: number, text: string}>> {
+    // Questa query concatena tutti i metadati in un'unica stringa per l'AI
+    const sql = `
+      SELECT 
+        d.id, 
+        GROUP_CONCAT(m.meta_key || ': ' || m.meta_value, '. ') as text
+      FROM document d
+      LEFT JOIN metadata m ON m.document_id = d.id
+      GROUP BY d.id
+    `;
+    return await this.executeQuery(sql, []);
+  }
+
+  /**
+   * Recupera tutti i metadati di un documento specifico
+   * Usato per la ricerca semantica
+   */
+  async getDocumentMetadata(documentId: number): Promise<Array<{meta_key: string, meta_value: string}>> {
+    const rows = await this.executeQuery<Array<{meta_key: string, meta_value: string}>>(
+      'SELECT meta_key, meta_value FROM metadata WHERE document_id = ? ORDER BY meta_key',
+      [documentId]
+    );
+    return rows;
+  }
+
+  /**
+   * Recupera i metadati di un file specifico (allegati)
+   * Usato per indicizzare gli allegati nella ricerca semantica
+   */
+  async getFileMetadata(fileId: number): Promise<Array<{meta_key: string, meta_value: string}>> {
+    const rows = await this.executeQuery<Array<{meta_key: string, meta_value: string}>>(
+      'SELECT meta_key, meta_value FROM metadata WHERE file_id = ? ORDER BY meta_key',
+      [fileId]
+    );
+    return rows;
+  }
 }

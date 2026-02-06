@@ -276,11 +276,12 @@ CREATE TABLE IF NOT EXISTS phase (
 );
 
 --semantic search
-CREATE VIRTUAL TABLE IF NOT EXISTS document_vec USING vec0(
+CREATE TABLE IF NOT EXISTS document_vec (
     document_id INTEGER PRIMARY KEY,
-    embedding float[768]
+    embedding BLOB
 );
 
+-- FTS5 è standard e incluso, quindi questo VA BENE
 CREATE VIRTUAL TABLE IF NOT EXISTS document_fts USING fts5(
     document_id UNINDEXED,
     combined_text,

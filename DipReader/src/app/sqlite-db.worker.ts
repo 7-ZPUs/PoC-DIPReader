@@ -11,10 +11,10 @@ let currentDipUUID: string | null = null;
 
 async function startDb(): Promise<{ status: string }> {
   try {
-    const sqlite3Instance: Sqlite3Static = await sqlite3InitModule({
-      print: console.log,
-      printErr: console.error,
-    });
+const sqlite3Instance: Sqlite3Static = await (sqlite3InitModule as any)({
+  print: console.log,
+  printErr: console.error,
+});
     
     if (!('opfs' in sqlite3Instance)) {
       return { status: 'memory-only' };

@@ -3,400 +3,207 @@ import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 import { pipeline, env } from '@xenova/transformers';
 
 // ============================================================================
-// CONFIGURAZIONE
+// 1. CONFIGURAZIONE
 // ============================================================================
 env.localModelPath = '/assets/models/';
-env.allowLocalModels = true;   // Prova prima i modelli locali
-env.allowRemoteModels = true;  // Se falliscono, scarica da Hugging Face
-env.useBrowserCache = false;   // Evita cache corrotta
-
-// Configurazione ONNX per migliore compatibilità
-env.backends = env.backends || {};
-env.backends.onnx = env.backends.onnx || {};
-env.backends.onnx.wasm = env.backends.onnx.wasm || {};
-env.backends.onnx.wasm.numThreads = 1;
+env.allowLocalModels = true;
+env.allowRemoteModels = false;
+env.useBrowserCache = false;
 
 // ============================================================================
-// STATE
+// 2. STATO DEL WORKER
 // ============================================================================
 let db: any = null;
 let embedder: any = null;
-let isInitializing = false;
 let isInitialized = false;
 
+// CACHE IN MEMORIA: Fondamentale per la velocità senza l'estensione vec0
+// Mappa: ID Documento -> Vettore (Float32Array)
+const vectorCache = new Map<number, Float32Array>();
+
 // ============================================================================
-// MESSAGE HANDLER
+// 3. GESTIONE MESSAGGI
 // ============================================================================
 addEventListener('message', async ({ data }) => {
   try {
     switch (data.type) {
       case 'INIT':
-        if (isInitializing) {
-          console.warn('Worker: Inizializzazione già in corso, ignoro duplicato');
-          return;
-        }
-        if (isInitialized) {
-          console.log('Worker: Già inizializzato');
-          postMessage({ type: 'INIT_RESULT', status: 'already_initialized' });
-          return;
-        }
-        
-        isInitializing = true;
         await initSystem(data.payload);
-        isInitializing = false;
-        isInitialized = true;
         postMessage({ type: 'INIT_RESULT', status: 'ok' });
         break;
-        
+
       case 'INDEX_METADATA':
-        if (!isInitialized) {
-          throw new Error('Worker non inizializzato');
-        }
         await ingestDocument(data.payload);
         postMessage({ type: 'INDEX_RESULT', status: 'ok', id: data.payload.id });
         break;
-        
+
       case 'SEARCH':
-        if (!isInitialized) {
-          throw new Error('Worker non inizializzato');
-        }
         const results = await search(data.payload.query);
         postMessage({ type: 'SEARCH_RESULT', results });
         break;
-        
+
       case 'REINDEX_ALL':
-        if (!isInitialized) {
-          throw new Error('Worker non inizializzato');
-        }
-        if (!data.payload || !data.payload.documents) {
-          throw new Error('Dati documenti mancanti nel payload');
-        }
         await reindexAllDocuments(data.payload.documents);
         postMessage({ type: 'REINDEX_COMPLETE', status: 'ok' });
         break;
-        
-      default:
-        console.warn('Worker: Tipo messaggio sconosciuto:', data.type);
     }
   } catch (err: any) {
     console.error('Worker Error:', err);
-    isInitializing = false; // Reset flag in caso di errore
-    postMessage({ 
-      type: 'ERROR', 
-      error: { message: err.message, stack: err.stack },
-      originalType: data.type
-    });
+    postMessage({ type: 'ERROR', error: { message: err.message } });
   }
 });
 
 // ============================================================================
-// INITIALIZATION
+// 4. FUNZIONI CORE
 // ============================================================================
+
 async function initSystem(config: { wasmUrl: string }) {
-  console.log('========================================');
-  console.log('Worker: Avvio inizializzazione sistema');
-  console.log('========================================');
-
-  try {
-    // STEP 1: SQLite
-    console.log('Worker: [1/2] Inizializzazione SQLite...');
-    await initSQLite();
-    console.log('Worker: ✓ SQLite pronto');
-
-    // STEP 2: AI Model
-    console.log('Worker: [2/2] Caricamento modello AI...');
-    await initAIModel();
-    console.log('Worker: ✓ Modello AI caricato');
-
-    console.log('========================================');
-    console.log('Worker: ✓ Sistema pronto!');
-    console.log('========================================');
-    
-  } catch (err: any) {
-    console.error('========================================');
-    console.error('Worker: ✗ ERRORE INIZIALIZZAZIONE');
-    console.error('========================================');
-    console.error(err);
-    throw err;
-  }
+  if (!self.crossOriginIsolated) {
+    console.warn("Worker: App non isolata (COOP/COEP mancanti). OPFS disabilitato, fallback in memoria.");
+    // Forza il fallback immediatamente senza provare OpfsDb
 }
+  if (isInitialized) return;
+  console.log('Worker: Avvio sistema Semantic Search (Mode: BLOB+JS)...');
 
-async function initSQLite() {
-  const sqlite3 = await sqlite3InitModule({ 
+  // A. Caricamento AI
+  // Assicurati che la cartella /assets/models/nomic-ai/v1.5-fixed esista!
+  embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+    quantized: true,
+  });
+  console.log('Worker: AI caricata.');
+
+  // B. Caricamento SQLite
+  const sqlite3 = await (sqlite3InitModule as any)({ 
     print: console.log, 
     printErr: console.error 
   });
-
-  if ('opfs' in sqlite3) {
-    db = new sqlite3.oo1.OpfsDb('/archival-semantic.sqlite3');
-    console.log('Worker: DB OPFS aperto (persistente)');
-  } else {
-    db = new sqlite3.oo1.DB('/archival-semantic.sqlite3', 'ct');
-    console.warn('Worker: DB in memoria (non persistente)');
+  
+  // Usa un nome file DIVERSO dal database principale per evitare conflitti di lock
+  const dbName = '/vectors.sqlite3';
+  
+  try {
+    if ('opfs' in sqlite3) {
+      db = new sqlite3.oo1.OpfsDb(dbName);
+      console.log('Worker: DB Vettori aperto su OPFS.');
+    } else {
+      throw new Error('OPFS non disponibile');
+    }
+  } catch (e) {
+    console.warn('Worker: Fallback in memoria (File bloccato o non supportato).');
+    db = new sqlite3.oo1.DB(dbName, 'ct');
   }
 
-  // Crea tabelle per ricerca semantica
+  // C. Creazione Tabelle (Standard SQL, NIENTE vec0)
   db.exec(`
-    CREATE VIRTUAL TABLE IF NOT EXISTS document_fts 
-    USING fts5(doc_id UNINDEXED, content);
-    
-    CREATE VIRTUAL TABLE IF NOT EXISTS document_vec 
-    USING vec0(doc_id INTEGER PRIMARY KEY, embedding float[768]);
+    CREATE VIRTUAL TABLE IF NOT EXISTS document_fts USING fts5(doc_id UNINDEXED, content);
+    CREATE TABLE IF NOT EXISTS document_vectors (
+        doc_id INTEGER PRIMARY KEY, 
+        embedding BLOB
+    );
   `);
-  
-  console.log('Worker: Tabelle vettoriali create');
-}
 
-async function initAIModel() {
-  const modelName = 'nomic-ai/v1.5-fixed';
+  // D. Idratazione Cache (Carica i vettori dal disco alla RAM)
+  console.log('Worker: Caricamento vettori in RAM...');
+  const rows = db.exec({
+    sql: 'SELECT doc_id, embedding FROM document_vectors',
+    returnValue: 'resultRows'
+  });
   
-  console.log(`Worker: Caricamento modello: ${modelName}`);
-  console.log(`Worker: - Path locale: ${env.localModelPath}`);
-  console.log(`Worker: - Modelli locali: ${env.allowLocalModels}`);
-  console.log(`Worker: - Modelli remoti: ${env.allowRemoteModels}`);
-  console.log(`Worker: - Cache browser: ${env.useBrowserCache}`);
-  
-  try {
-    embedder = await pipeline('feature-extraction', modelName, {
-      quantized: true,
-      progress_callback: (progress: any) => {
-        if (progress.status === 'progress') {
-          const percent = Math.round(progress.progress || 0);
-          console.log(`Worker: Download ${progress.file}: ${percent}%`);
-        } else if (progress.status === 'done') {
-          console.log(`Worker: ✓ ${progress.file} caricato`);
-        } else if (progress.status === 'initiate') {
-          console.log(`Worker: Inizio download ${progress.file}...`);
-        }
-      }
-    });
-    
-    // Test di verifica
-    console.log('Worker: Test embedding...');
-    const testResult = await embedder('test', { 
-      pooling: 'mean', 
-      normalize: true 
-    });
-    
-    if (!testResult || !testResult.data || testResult.data.length === 0) {
-      throw new Error('Modello non produce output valido');
-    }
-    
-    console.log(`Worker: ✓ Test OK (dimensione: ${testResult.data.length})`);
-    
-  } catch (err: any) {
-    console.error('Worker: ERRORE caricamento modello:', err.message);
-    
-    // Diagnostica dettagliata
-    if (err.message.includes('protobuf') || err.message.includes('parsing')) {
-      console.error('');
-      console.error('═══════════════════════════════════════════════════════');
-      console.error('PROBLEMA: File del modello corrotti o incompatibili');
-      console.error('═══════════════════════════════════════════════════════');
-      console.error('');
-      console.error('SOLUZIONI POSSIBILI:');
-      console.error('');
-      console.error('1. Elimina la cache del browser:');
-      console.error('   - Apri DevTools (F12)');
-      console.error('   - Application → Storage → Clear site data');
-      console.error('');
-      console.error('2. Verifica i file del modello in:');
-      console.error('   /assets/models/nomic-ai/v1.5-fixed/');
-      console.error('   Devono esserci:');
-      console.error('   - config.json');
-      console.error('   - tokenizer.json');
-      console.error('   - onnx/model_quantized.onnx');
-      console.error('');
-      console.error('3. Oppure usa un modello più piccolo per test:');
-      console.error('   Cambia "nomic-ai/v1.5-fixed" con');
-      console.error('   "Xenova/all-MiniLM-L6-v2"');
-      console.error('   (si scarica automaticamente, ~25MB)');
-      console.error('');
-      console.error('═══════════════════════════════════════════════════════');
-      
-    } else if (err.message.includes('session') || err.message.includes('WASM')) {
-      console.error('');
-      console.error('═══════════════════════════════════════════════════════');
-      console.error('PROBLEMA: ONNX Runtime / WebAssembly');
-      console.error('═══════════════════════════════════════════════════════');
-      console.error('');
-      console.error('SOLUZIONI:');
-      console.error('1. Usa Chrome o Edge (migliore supporto WASM)');
-      console.error('2. Verifica che WASM sia abilitato nel browser');
-      console.error('3. Disabilita estensioni del browser');
-      console.error('');
-      console.error('═══════════════════════════════════════════════════════');
-    }
-    
-    throw new Error(`Impossibile caricare modello AI: ${err.message}`);
+  for (const row of rows) {
+    const id = row[0];
+    const blob = row[1]; // Questo arriva come Uint8Array
+    // Converti i byte grezzi in array di numeri Float32
+    const vector = new Float32Array(blob.buffer, blob.byteOffset, blob.byteLength / 4);
+    vectorCache.set(id, vector);
   }
+  console.log(`Worker: ${vectorCache.size} vettori pronti in memoria.`);
+
+  isInitialized = true;
 }
 
-// ============================================================================
-// DOCUMENT OPERATIONS
-// ============================================================================
 async function ingestDocument({ id, text }: { id: number, text: string }) {
-  if (!db || !embedder) {
-    throw new Error('Sistema non completamente inizializzato');
-  }
-  
-  try {
-    // Limita lunghezza testo (max ~2000 caratteri)
-    const maxLength = 2000;
-    const truncatedText = text.length > maxLength 
-      ? text.substring(0, maxLength) + '...' 
-      : text;
-    
-    // Genera embedding
-    const out = await embedder(truncatedText, { 
-      pooling: 'mean', 
-      normalize: true 
+  if (!db) throw new Error('DB non pronto');
+
+  // 1. Crea Embedding
+  const out = await embedder(text, { pooling: 'mean', normalize: true });
+  const vector = out.data as Float32Array; 
+
+  // 2. Salva in Cache RAM (per ricerca veloce)
+  vectorCache.set(id, vector);
+
+  // 3. Salva su Disco (come BLOB standard)
+  db.transaction(() => {
+    // Indice testuale
+    db.exec({ 
+      sql: `INSERT OR REPLACE INTO document_fts(doc_id, content) VALUES (?, ?)`, 
+      bind: [id, text] 
     });
     
-    const vector = Array.from(out.data);
-
-    // Verifica dimensione
-    if (vector.length !== 768) {
-      throw new Error(`Dimensione embedding errata: ${vector.length} (atteso: 768)`);
-    }
-
-    // Salva in transazione
-    db.exec(`BEGIN TRANSACTION`);
-    
-    try {
-      db.exec({ 
-        sql: `INSERT OR REPLACE INTO document_fts(doc_id, content) VALUES (?, ?)`, 
-        bind: [id, truncatedText] 
-      });
-      
-      db.exec({ 
-        sql: `INSERT OR REPLACE INTO document_vec(doc_id, embedding) VALUES (?, ?)`, 
-        bind: [id, vector] 
-      });
-      
-      db.exec(`COMMIT`);
-      
-    } catch (dbErr) {
-      db.exec(`ROLLBACK`);
-      throw dbErr;
-    }
-    
-  } catch (err: any) {
-    console.error(`Worker: Errore indicizzazione doc ${id}:`, err.message);
-    throw err;
-  }
+    // Indice vettoriale (BLOB)
+    db.exec({ 
+      sql: `INSERT OR REPLACE INTO document_vectors(doc_id, embedding) VALUES (?, ?)`, 
+      bind: [id, vector] // SQLite WASM salva automaticamente il TypedArray come BLOB
+    });
+  });
 }
 
 async function search(query: string) {
-  if (!db || !embedder) {
-    throw new Error('Sistema non completamente inizializzato');
-  }
-  
-  try {
-    // Genera embedding query
-    const out = await embedder(query, { 
-      pooling: 'mean', 
-      normalize: true 
-    });
-    
-    const vector = Array.from(out.data);
-    
-    if (vector.length !== 768) {
-      throw new Error(`Dimensione embedding query errata: ${vector.length}`);
+  if (!db || !embedder) throw new Error('Sistema non pronto');
+
+  // 1. Vettorizza la query dell'utente
+  const out = await embedder(query, { pooling: 'mean', normalize: true });
+  const queryVector = out.data as Float32Array;
+
+  // 2. Calcola Similarità (Cosine Similarity) in JS puro
+  // Iteriamo sulla cache in memoria invece di fare una query SQL complessa
+  const results: Array<{id: number, score: number}> = [];
+
+  for (const [docId, docVector] of vectorCache.entries()) {
+    const score = cosineSimilarity(queryVector, docVector);
+    // Filtro soglia (es. 0.25) per scartare risultati irrilevanti
+    if (score > 0.25) { 
+      results.push({ id: docId, score });
     }
-    
-    const results: any[] = [];
-    
-    // Ricerca vettoriale
-    db.exec({
-      sql: `
-        SELECT doc_id, vec_distance_cosine(embedding, ?) as distance 
-        FROM document_vec 
-        ORDER BY distance ASC 
-        LIMIT 20
-      `,
-      bind: [vector],
-      callback: (row: any) => {
-        results.push({ 
-          id: row[0], 
-          score: 1 - row[1] // Converti distanza in similarità
-        });
-      }
-    });
-    
-    return results;
-    
-  } catch (err: any) {
-    console.error('Worker: Errore ricerca:', err.message);
-    throw err;
   }
+
+  // 3. Ordina per punteggio (dal più alto al più basso) e prendi i primi 20
+  results.sort((a, b) => b.score - a.score);
+  return results.slice(0, 20);
 }
 
 async function reindexAllDocuments(documents: Array<{id: number, text: string}>) {
-  if (!db || !embedder) {
-    throw new Error('Sistema non completamente inizializzato');
-  }
-  
-  console.log(`Worker: Ricevuti ${documents.length} documenti per re-indicizzazione`);
-  
-  // Pulisci indici esistenti
-  try {
-    db.exec(`DELETE FROM document_fts`);
-    db.exec(`DELETE FROM document_vec`);
-    console.log('Worker: Indici precedenti eliminati');
-  } catch (err) {
-    console.warn('Worker: Impossibile eliminare indici (potrebbero non esistere)');
-  }
-  
-  // Indicizza documenti
-  let count = 0;
-  let failed = 0;
-  const startTime = Date.now();
-  
-  for (const doc of documents) {
-    try {
-      const content = doc.text || `Documento ${doc.id}`;
-      await ingestDocument({ id: doc.id, text: content });
-      count++;
-      
-      // Progress ogni 5 documenti
-      if (count % 5 === 0) {
-        const elapsed = (Date.now() - startTime) / 1000;
-        const rate = count / elapsed;
-        console.log(
-          `Worker: Indicizzati ${count}/${documents.length} ` +
-          `(${Math.round(rate * 10) / 10} doc/s)`
-        );
-      }
-      
-    } catch (err) {
-      console.error(`Worker: Errore indicizzazione doc ${doc.id}:`, err);
-      failed++;
+    if (!db) throw new Error('DB non pronto');
+    
+    console.log(`Worker: Re-indicizzazione di ${documents.length} documenti...`);
+    
+    // Pulisci tutto per ripartire da zero
+    db.exec('DELETE FROM document_fts; DELETE FROM document_vectors;');
+    vectorCache.clear();
+
+    let count = 0;
+    for (const doc of documents) {
+        const content = doc.text || `Documento ${doc.id}`;
+        await ingestDocument({ id: doc.id, text: content });
+        
+        count++;
+        // Notifica progresso ogni 5 documenti
+        if (count % 5 === 0) {
+            postMessage({ type: 'REINDEX_PROGRESS', indexed: count, total: documents.length });
+        }
     }
-  }
-  
-  const totalTime = Math.round((Date.now() - startTime) / 1000);
-  console.log(`Worker: ✓ Re-indicizzazione completata in ${totalTime}s`);
-  console.log(`Worker: Successi: ${count}, Falliti: ${failed}`);
+    console.log('Worker: Indicizzazione completata.');
 }
 
 // ============================================================================
-// ERROR HANDLERS
+// 5. UTILITÀ MATEMATICHE
 // ============================================================================
-addEventListener('error', (event) => {
-  console.error('Worker: Errore non gestito:', event);
-  postMessage({ 
-    type: 'ERROR', 
-    error: { message: 'Errore non gestito', details: event.message }
-  });
-});
-
-addEventListener('unhandledrejection', (event) => {
-  console.error('Worker: Promise rejection:', event.reason);
-  postMessage({ 
-    type: 'ERROR', 
-    error: { message: 'Promise rejection', details: event.reason }
-  });
-});
-
-console.log('Worker: Script caricato, in attesa di INIT...');
+function cosineSimilarity(a: Float32Array, b: Float32Array): number {
+  // Prodotto scalare (Dot Product)
+  let dotProduct = 0;
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+  }
+  // Poiché i vettori sono già normalizzati dall'AI (normalize: true),
+  // il prodotto scalare È la cosine similarity. Non serve dividere per le magnitudini.
+  return dotProduct;
+}

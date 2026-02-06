@@ -84,7 +84,6 @@ async function initSystem(config: { wasmUrl: string }) {
   const sqlite3 = await (sqlite3InitModule as any)({
     print: console.log,
     printErr: console.error,
-    proxyUri: '/assets/sqlite-wasm/sqlite3-opfs-async-proxy.js',
     locateFile: (file: string) => {
       console.log(`Worker: SQLite richiede file: ${file}`);
       return `/assets/sqlite-wasm/${file}`;

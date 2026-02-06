@@ -34,6 +34,7 @@
     "@sqliteai/sqlite-wasm": "^3.50.4-sync.0.8.63-vector.0.9.70",
     "@xmldom/xmldom": "^0.8.11",
     "fast-xml-parser": "^5.3.3",
+    "onnxruntime-web": "^1.24.1",
     "rxjs": "~7.8.0",
     "sqlite-wasm": "^0.0.2",
     "tslib": "^2.3.0"

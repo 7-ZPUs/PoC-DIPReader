@@ -14,6 +14,9 @@ async function startDb(): Promise<{ status: string }> {
 const sqlite3Instance: Sqlite3Static = await (sqlite3InitModule as any)({
   print: console.log,
   printErr: console.error,
+  locateFile: (file: string) => {
+        return `/assets/sqlite-wasm/${file}`;
+      }
 });
     
     if (!('opfs' in sqlite3Instance)) {
@@ -60,7 +63,7 @@ async function openOrCreateDatabase(dipUUID: string): Promise<void> {
 
   // Se il database è nuovo, crea lo schema
   if (!fileExists) {
-    const schema_path = '/schema.sql';
+    const schema_path = '/db/schema.sql';
     const schema = await fetch(schema_path).then(r => r.text());
     await db.exec(schema);
     console.log(`[Worker] Schema creato per: ${dbFileName}`);

@@ -348,6 +348,93 @@ export class IndexerLogic {
       bind: ['Impronta', Impronta?.textContent || '', documentId, 'string']
     });
 
+    // Metadati generici aggiuntivi
+    const DataFattura = xmlDoc.getElementsByTagName('DataFattura')[0];
+    if (DataFattura) {
+      this.db?.exec({
+        sql: query,
+        bind: ['DataFattura', DataFattura.textContent || '', documentId, 'date']
+      });
+    }
+
+    const NumeroFattura = xmlDoc.getElementsByTagName('NumeroFattura')[0];
+    if (NumeroFattura) {
+      this.db?.exec({
+        sql: query,
+        bind: ['NumeroFattura', NumeroFattura.textContent || '', documentId, 'string']
+      });
+    }
+
+    const CodiceFiscale = xmlDoc.getElementsByTagName('CodiceFiscale')[0];
+    if (CodiceFiscale) {
+      this.db?.exec({
+        sql: query,
+        bind: ['CodiceFiscale', CodiceFiscale.textContent || '', documentId, 'string']
+      });
+    }
+
+    const Nome = xmlDoc.getElementsByTagName('Nome')[0];
+    if (Nome) {
+      this.db?.exec({
+        sql: query,
+        bind: ['Nome', Nome.textContent || '', documentId, 'string']
+      });
+    }
+
+    const Version = xmlDoc.getElementsByTagName('Version')[0] || 
+                    xmlDoc.getElementsByTagName('VersioneDelDocumento')[0];
+    if (Version) {
+      this.db?.exec({
+        sql: query,
+        bind: ['Version', Version.textContent || '', documentId, 'string']
+      });
+    }
+
+    const TipoRuolo = xmlDoc.getElementsByTagName('TipoRuolo')[0];
+    if (TipoRuolo) {
+      this.db?.exec({
+        sql: query,
+        bind: ['TipoRuolo', TipoRuolo.textContent || '', documentId, 'string']
+      });
+    }
+
+    const CategoriaProdotto = xmlDoc.getElementsByTagName('CategoriaProdotto')[0];
+    if (CategoriaProdotto) {
+      this.db?.exec({
+        sql: query,
+        bind: ['CategoriaProdotto', CategoriaProdotto.textContent || '', documentId, 'string']
+      });
+    }
+
+    const IdAggregazione = xmlDoc.getElementsByTagName('IdAggregazione')[0] ||
+                          xmlDoc.getElementsByTagName('IdAgg')[0];
+    if (IdAggregazione) {
+      this.db?.exec({
+        sql: query,
+        bind: ['IdAggregazione', IdAggregazione.textContent || '', documentId, 'string']
+      });
+    }
+
+    const ProdottoSoftware = xmlDoc.getElementsByTagName('ProdottoSoftware')[0];
+    if (ProdottoSoftware) {
+      const prodottoValue = ProdottoSoftware.getElementsByTagName('NomeProdotto')[0]?.textContent || 
+                           ProdottoSoftware.textContent || '';
+      this.db?.exec({
+        sql: query,
+        bind: ['ProdottoSoftware', prodottoValue, documentId, 'string']
+      });
+    }
+
+    const Produttore = xmlDoc.getElementsByTagName('Produttore')[0];
+    if (Produttore) {
+      const produttoreValue = Produttore.getElementsByTagName('Denominazione')[0]?.textContent || 
+                             Produttore.textContent || '';
+      this.db?.exec({
+        sql: query,
+        bind: ['Produttore', produttoreValue, documentId, 'string']
+      });
+    }
+
     query = 'INSERT OR IGNORE INTO metadata(meta_key, meta_value, file_id, meta_type) VALUES (?, ?, ?, ?)';
 
     const attachments = xmlDoc.getElementsByTagName('IndiceAllegati');
@@ -378,7 +465,309 @@ export class IndexerLogic {
       }
     }
 
-    console.log('Metadata processed for document ID:', documentId);
+    // Process Soggetti (Subjects) - strutturati nelle tabelle apposite
+    await this.processSoggetti(xmlDoc, documentId);
 
+    // Process Fasi (Phases) - strutturati nelle tabelle apposite
+    await this.processFasi(xmlDoc, documentId);
+
+    console.log('Metadata processed for document ID:', documentId);
+  }
+
+  private async processFasi(xmlDoc: Document, documentId: number): Promise<void> {
+    if (!this.db) return;
+
+    // Le fasi sono associate a procedure amministrative
+    // Cerca prima se esiste una procedura amministrativa nel documento
+    const proceduraElement = xmlDoc.getElementsByTagName('ProceduraAmministrativa')[0] ||
+                            xmlDoc.getElementsByTagName('ProcedimentoAmministrativo')[0];
+    
+    if (!proceduraElement) return;
+
+    // Estrai dati della procedura
+    const catalogUri = proceduraElement.getElementsByTagName('CatalogoURI')[0]?.textContent || '';
+    const titolo = proceduraElement.getElementsByTagName('Titolo')[0]?.textContent || '';
+    const oggettoInteresse = proceduraElement.getElementsByTagName('OggettoDiInteresse')[0]?.textContent || '';
+
+    // Inserisci la procedura amministrativa
+    this.db.exec({
+      sql: 'INSERT INTO administrative_procedure (catalog_uri, title, subject_of_interest) VALUES (?, ?, ?)',
+      bind: [catalogUri, titolo, oggettoInteresse || null]
+    });
+
+    let procedureId = 0;
+    this.db.exec({
+      sql: 'SELECT last_insert_rowid() as id',
+      callback: (row) => {
+        procedureId = row[0] as number;
+      }
+    });
+
+    if (procedureId === 0) return;
+
+    // Aggiorna il documento con l'aggregazione se necessario
+    const aggElement = xmlDoc.getElementsByTagName('Agg')[0];
+    if (aggElement) {
+      const tipoAgg = aggElement.getElementsByTagName('TipoAggregazione')[0]?.textContent || '';
+      
+      this.db.exec({
+        sql: 'INSERT INTO document_aggregation (procedure_id, type) VALUES (?, ?)',
+        bind: [procedureId, tipoAgg]
+      });
+
+      let aggregationId = 0;
+      this.db.exec({
+        sql: 'SELECT last_insert_rowid() as id',
+        callback: (row) => {
+          aggregationId = row[0] as number;
+        }
+      });
+
+      if (aggregationId > 0) {
+        this.db.exec({
+          sql: 'UPDATE document SET aggregation_id = ? WHERE id = ?',
+          bind: [aggregationId, documentId]
+        });
+      }
+    }
+
+    // Estrai e inserisci le fasi
+    const fasiElements = proceduraElement.getElementsByTagName('Fase') ||
+                        proceduraElement.getElementsByTagName('Fasi');
+    
+    for (let i = 0; i < fasiElements.length; i++) {
+      const fase = fasiElements[i];
+      
+      // Se Fasi è un contenitore, cerca le singole Fase al suo interno
+      if (fase.tagName === 'Fasi') {
+        const faseSingole = fase.getElementsByTagName('Fase');
+        for (let j = 0; j < faseSingole.length; j++) {
+          await this.insertFase(faseSingole[j], procedureId);
+        }
+      } else {
+        await this.insertFase(fase, procedureId);
+      }
+    }
+  }
+
+  private async insertFase(faseElement: Element, procedureId: number): Promise<void> {
+    if (!this.db) return;
+
+    const tipo = faseElement.getElementsByTagName('TipoFase')[0]?.textContent || 
+                faseElement.getElementsByTagName('Tipo')[0]?.textContent || '';
+    const dataInizio = faseElement.getElementsByTagName('DataInizio')[0]?.textContent || 
+                      faseElement.getElementsByTagName('DataApertura')[0]?.textContent || '';
+    const dataFine = faseElement.getElementsByTagName('DataFine')[0]?.textContent || 
+                    faseElement.getElementsByTagName('DataChiusura')[0]?.textContent || null;
+
+    if (tipo && dataInizio) {
+      this.db.exec({
+        sql: 'INSERT INTO phase (type, start_date, end_date, administrative_procedure_id) VALUES (?, ?, ?, ?)',
+        bind: [tipo, dataInizio, dataFine, procedureId]
+      });
+    }
+  }
+
+  private async processSoggetti(xmlDoc: Document, documentId: number): Promise<void> {
+    if (!this.db) return;
+
+    const soggettiElement = xmlDoc.getElementsByTagName('Soggetti')[0];
+    if (!soggettiElement) return;
+
+    const ruoli = soggettiElement.getElementsByTagName('Ruolo');
+    for (let i = 0; i < ruoli.length; i++) {
+      const ruolo = ruoli[i];
+      
+      // Struttura: <Ruolo><TipoRuolo/><Destinatario><PF>...</PF></Destinatario></Ruolo>
+      // Oppure: <Ruolo><Destinatario><TipoRuolo/><PF>...</PF></Destinatario></Ruolo>
+      
+      // Cerca elementi figli che rappresentano il tipo di ruolo (Destinatario, Mittente, ecc.)
+      if (!ruolo.children || ruolo.children.length === 0) continue;
+      
+      for (let j = 0; j < ruolo.children.length; j++) {
+        const roleChild = ruolo.children[j];
+        
+        // Salta l'elemento TipoRuolo (è solo descrittivo)
+        if (roleChild.tagName === 'TipoRuolo') continue;
+
+        // Ora roleChild è un elemento come Destinatario, Mittente, ecc.
+        // Cerca i soggetti (PF, PG, PAI, ecc.) dentro questo elemento
+        if (!roleChild.children || roleChild.children.length === 0) continue;
+        
+        for (let k = 0; k < roleChild.children.length; k++) {
+          const soggettoElement = roleChild.children[k];
+          
+          // Salta TipoRuolo se è qui
+          if (soggettoElement.tagName === 'TipoRuolo') continue;
+          
+          const subjectId = await this.insertSubject(soggettoElement);
+          
+          if (subjectId) {
+            // Associa soggetto al documento
+            this.db.exec({
+              sql: 'INSERT OR IGNORE INTO document_subject_association (document_id, subject_id) VALUES (?, ?)',
+              bind: [documentId, subjectId]
+            });
+          }
+        }
+      }
+    }
+  }
+
+  private async insertSubject(soggettoElement: Element): Promise<number | null> {
+    if (!this.db) return null;
+
+    const tagName = soggettoElement.tagName;
+    
+    // Inserisci nella tabella subject principale
+    this.db.exec({
+      sql: 'INSERT INTO subject DEFAULT VALUES'
+    });
+
+    // Recupera l'ID appena creato
+    let subjectId = 0;
+    this.db.exec({
+      sql: 'SELECT last_insert_rowid() as id',
+      callback: (row) => {
+        subjectId = row[0] as number;
+      }
+    });
+
+    if (subjectId === 0) return null;
+
+    switch (tagName) {
+      case 'PF': // Persona Fisica
+        await this.insertSubjectPF(soggettoElement, subjectId);
+        break;
+      case 'PG': // Persona Giuridica
+        await this.insertSubjectPG(soggettoElement, subjectId);
+        break;
+      case 'PAI': // Pubblica Amministrazione Interna
+        await this.insertSubjectPAI(soggettoElement, subjectId);
+        break;
+      case 'PAE': // Pubblica Amministrazione Esterna
+        await this.insertSubjectPAE(soggettoElement, subjectId);
+        break;
+      case 'AS': // Assegnatario
+        await this.insertSubjectAS(soggettoElement, subjectId);
+        break;
+      case 'SW': // Sistema Software
+        await this.insertSubjectSQ(soggettoElement, subjectId);
+        break;
+      default:
+        console.warn('Unknown subject type:', tagName);
+        return null;
+    }
+
+    return subjectId;
+  }
+
+  private async insertSubjectPF(element: Element, subjectId: number): Promise<void> {
+    if (!this.db) return;
+
+    const cognome = element.getElementsByTagName('Cognome')[0]?.textContent || '';
+    const nome = element.getElementsByTagName('Nome')[0]?.textContent || '';
+    const cf = element.getElementsByTagName('CodiceFiscale')[0]?.textContent || '';
+    const indirizziTelematici = this.extractDigitalAddresses(element);
+
+    this.db.exec({
+      sql: `INSERT OR IGNORE INTO subject_pf (subject_id, cf, first_name, last_name, digital_addresses) 
+            VALUES (?, ?, ?, ?, ?)`,
+      bind: [subjectId, cf || null, nome, cognome, indirizziTelematici]
+    });
+  }
+
+  private async insertSubjectPG(element: Element, subjectId: number): Promise<void> {
+    if (!this.db) return;
+
+    const denominazione = element.getElementsByTagName('Denominazione')[0]?.textContent || '';
+    const sede = element.getElementsByTagName('Sede')[0]?.textContent || '';
+    const pIva = element.getElementsByTagName('PartitaIVA')[0]?.textContent || '';
+    const indirizziTelematici = this.extractDigitalAddresses(element);
+
+    this.db.exec({
+      sql: `INSERT OR IGNORE INTO subject_pg (subject_id, p_iva, company_name, office_name, digital_addresses) 
+            VALUES (?, ?, ?, ?, ?)`,
+      bind: [subjectId, pIva || null, denominazione, sede || null, indirizziTelematici]
+    });
+  }
+
+  private async insertSubjectPAI(element: Element, subjectId: number): Promise<void> {
+    if (!this.db) return;
+
+    const codiceIPA = element.getElementsByTagName('CodiceIPA')[0];
+    const amministrazione = codiceIPA?.getElementsByTagName('Amministrazione')[0]?.textContent || '';
+    const aoo = codiceIPA?.getElementsByTagName('AOO')[0]?.textContent || '';
+    const uor = codiceIPA?.getElementsByTagName('UOR')[0]?.textContent || '';
+    const indirizziTelematici = this.extractDigitalAddresses(element);
+
+    this.db.exec({
+      sql: `INSERT OR IGNORE INTO subject_pai (subject_id, administration_ipa_name, administration_aoo_name, administration_uor_name, digital_addresses) 
+            VALUES (?, ?, ?, ?, ?)`,
+      bind: [subjectId, amministrazione, aoo, uor, indirizziTelematici]
+    });
+  }
+
+  private async insertSubjectPAE(element: Element, subjectId: number): Promise<void> {
+    if (!this.db) return;
+
+    const denominazione = element.getElementsByTagName('Denominazione')[0]?.textContent || '';
+    const sede = element.getElementsByTagName('Sede')[0]?.textContent || '';
+    const indirizziTelematici = this.extractDigitalAddresses(element);
+
+    this.db.exec({
+      sql: `INSERT OR IGNORE INTO subject_pae (subject_id, administration_name, office_name, digital_addresses) 
+            VALUES (?, ?, ?, ?)`,
+      bind: [subjectId, denominazione, sede || null, indirizziTelematici]
+    });
+  }
+
+  private async insertSubjectAS(element: Element, subjectId: number): Promise<void> {
+    if (!this.db) return;
+
+    const cognome = element.getElementsByTagName('Cognome')[0]?.textContent || '';
+    const nome = element.getElementsByTagName('Nome')[0]?.textContent || '';
+    const cf = element.getElementsByTagName('CodiceFiscale')[0]?.textContent || '';
+    const denominazione = element.getElementsByTagName('Denominazione')[0]?.textContent || '';
+    const sede = element.getElementsByTagName('Sede')[0]?.textContent || '';
+    const indirizziTelematici = this.extractDigitalAddresses(element);
+
+    this.db.exec({
+      sql: `INSERT OR IGNORE INTO subject_as (subject_id, first_name, last_name, cf, organization_name, office_name, digital_addresses) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      bind: [subjectId, nome || null, cognome || null, cf || null, denominazione, sede, indirizziTelematici]
+    });
+  }
+
+  private async insertSubjectSQ(element: Element, subjectId: number): Promise<void> {
+    if (!this.db) return;
+
+    const sistemaSoftware = element.getElementsByTagName('SistemaSoftware')[0]?.textContent || 
+                           element.getElementsByTagName('Denominazione')[0]?.textContent || '';
+
+    this.db.exec({
+      sql: `INSERT OR IGNORE INTO subject_sq (subject_id, system_name) VALUES (?, ?)`,
+      bind: [subjectId, sistemaSoftware]
+    });
+  }
+
+  private extractDigitalAddresses(element: Element): string {
+    const addresses: string[] = [];
+    const indirizziTelematici = element.getElementsByTagName('IndirizziTelematici')[0] || 
+                                element.getElementsByTagName('IndirizzoTelematico');
+    
+    if (indirizziTelematici) {
+      if (indirizziTelematici.children) {
+        for (let i = 0; i < indirizziTelematici.children.length; i++) {
+          const addr = indirizziTelematici.children[i].textContent?.trim();
+          if (addr) addresses.push(addr);
+        }
+      } else {
+        const addr = indirizziTelematici.textContent?.trim();
+        if (addr) addresses.push(addr);
+      }
+    }
+    
+    return addresses.join(';');
   }
 }

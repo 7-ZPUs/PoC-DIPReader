@@ -353,6 +353,7 @@ export class DatabaseService {
    * Usa IDs e relazioni invece di paths
    */
   async searchDocuments(nameQuery: string, filters: Filter[]): Promise<FileNode[]> {
+    // Query Base
     let sql_mains = `
       SELECT 
         dc.id as class_id,
@@ -367,6 +368,7 @@ export class DatabaseService {
       INNER JOIN aip a ON d.aip_uuid = a.uuid
       INNER JOIN document_class dc ON a.document_class_id = dc.id
     `;
+    
     let sql_attachments = `SELECT 
         dc.id as class_id,
         dc.class_name,
@@ -383,39 +385,46 @@ export class DatabaseService {
     const params: any[] = [];
     const conditions: string[] = [];
 
-    // Filtro per nome file
+    // 1. Filtro per nome file
     if (nameQuery && nameQuery.trim() !== '') {
       conditions.push(' f.relative_path LIKE ?');
       params.push(`%${nameQuery.trim()}%`);
     }
 
-    // Filtri sui metadati
+    // 2. Filtri sui metadati
     if (filters.length > 0) {
       filters.forEach((filter, index) => {
         if (filter.key && filter.value) {
-          sql_mains += ` INNER JOIN metadata m${index} ON f.document_id = m${index}.document_id WHERE f.is_main = 1 AND `;
-          sql_attachments += ` INNER JOIN metadata m${index} ON f.id = m${index}.file_id WHERE f.is_main = 0 AND `;
+          // Aggiunge le JOIN necessarie per i metadati
+          sql_mains += ` INNER JOIN metadata m${index} ON f.document_id = m${index}.document_id `;
+          sql_attachments += ` INNER JOIN metadata m${index} ON f.id = m${index}.file_id `;
+          
           conditions.push(`m${index}.meta_key = ? AND m${index}.meta_value LIKE ?`);
           params.push(filter.key, `%${filter.value}%`);
         }
       });
     }
 
-    if(filters.length === 0) {
-      sql_mains += ' WHERE f.is_main = 1 AND';
-      sql_attachments += ' WHERE f.is_main = 0 AND';
-    }
+    // 3. Costruzione della clausola WHERE (Logica Corretta)
+    // Partiamo dalla condizione base per Main/Attachment
+    let whereMain = ' WHERE f.is_main = 1';
+    let whereAttach = ' WHERE f.is_main = 0';
 
+    // Se ci sono altre condizioni, le aggiungiamo con AND
     if (conditions.length > 0) {
-      sql_mains += conditions.join(' AND ');
-      sql_attachments += conditions.join(' AND ');
+      const extraConditions = ' AND ' + conditions.join(' AND ');
+      whereMain += extraConditions;
+      whereAttach += extraConditions;
     }
 
-    sql_mains += ' ORDER BY dc.id, a.uuid, d.id, f.id';
-    sql_attachments += ' ORDER BY dc.id, a.uuid, d.id, f.id';
+    // 4. Assemblaggio Finale
+    // Ora siamo sicuri che non ci siano AND pendenti prima di ORDER BY
+    sql_mains += whereMain + ' ORDER BY dc.id, a.uuid, d.id, f.id';
+    sql_attachments += whereAttach + ' ORDER BY dc.id, a.uuid, d.id, f.id';
 
-    console.log('query:', sql_mains, 'params:', params);
+    console.log('query main:', sql_mains);
 
+    // Esecuzione
     let rows = await this.executeQuery<{
       class_id: number;
       class_name: string;
@@ -439,8 +448,6 @@ export class DatabaseService {
     rows = rows.concat(attachmentRows);
 
     console.log('[DatabaseService] Risultati trovati:', rows.length);
-
-    // Usa la stessa funzione per costruire la gerarchia, ma espandi tutto per i risultati di ricerca
     return this.buildHierarchicalTree(rows, true);
   }
 

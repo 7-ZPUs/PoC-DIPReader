@@ -48,7 +48,16 @@ addEventListener('message', async ({ data }) => {
         await reindexAllDocuments(data.payload.documents);
         postMessage({ type: 'REINDEX_COMPLETE', status: 'ok' });
         break;
-    }
+      case 'GENERATE_EMBEDDING':
+        if (!embedder) {
+          postMessage({ type: 'ERROR', error: { message: 'Modello AI non ancora caricato' } });
+          return;
+        }
+        const output = await embedder(data.payload.text, { pooling: 'mean', normalize: true });
+        // Inviamo il Float32Array puro al main thread
+        postMessage({ type: 'EMBEDDING_GENERATED', vector: output.data });
+        break;
+        }
   } catch (err: any) {
     console.error('Worker Error:', err);
     postMessage({ type: 'ERROR', error: { message: err.message } });
@@ -135,34 +144,46 @@ async function initSystem(config: { wasmUrl: string }) {
 async function ingestDocument({ id, text }: { id: number, text: string }) {
   if (!db) throw new Error('DB non pronto');
 
-
+  // 1. Genera embedding
   const out = await embedder(text, { pooling: 'mean', normalize: true });
   const vector = out.data as Float32Array;
 
+  console.log(`🔍 Vettore generato per Doc ID ${id} (Dimensione: ${vector.length})`);
+  
+  // Salva in cache RAM (qui usiamo il Float32Array originale per i calcoli veloci)
   vectorCache.set(id, vector);
 
-
+  // 2. Transazione SQLite
   db.transaction(() => {
-
+    // A. Inserimento FTS (Testo per ricerca full-text standard)
     db.exec({
       sql: `INSERT OR REPLACE INTO document_fts(doc_id, content) VALUES (?, ?)`,
       bind: [id, text]
     });
 
-    // Indice vettoriale (BLOB)
+    // B. Inserimento Vettore (BLOB)
+    // FIX CRITICO: Convertiamo Float32Array -> Uint8Array per SQLite
+    const vectorAsBytes = new Uint8Array(vector.buffer, vector.byteOffset, vector.byteLength);
+
     db.exec({
       sql: `INSERT OR REPLACE INTO document_vectors(doc_id, embedding) VALUES (?, ?)`,
-      bind: [id, vector] 
+      bind: [id, vectorAsBytes] 
     });
   });
 }
 
-async function search(query: string) {
+async function search(query: string | number[] | Float32Array) {
   if (!db || !embedder) throw new Error('Sistema non pronto');
 
-  // 1. Vettorizza la query dell'utente
-  const out = await embedder(query, { pooling: 'mean', normalize: true });
-  const queryVector = out.data as Float32Array;
+  let queryVector: Float32Array;
+
+  if (typeof query === 'string') {
+    const out = await embedder(query, { pooling: 'mean', normalize: true });
+    queryVector = out.data as Float32Array;
+  } 
+  else {
+    queryVector = new Float32Array(query);
+  }
 
   const results: Array<{id: number, score: number}> = [];
 

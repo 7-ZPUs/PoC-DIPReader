@@ -37,7 +37,7 @@ export class SearchService {
     }
   }
 
-  async searchSemantic(query: string): Promise<{id: number, score: number}[]> {
+  async searchSemantic(query: string | number[]): Promise<{id: number, score: number}[]> {
     if (!this.worker || !this.isWorkerReady) {
       console.warn('Worker non pronto, salto ricerca semantica.');
       return [];
@@ -133,33 +133,48 @@ export class SearchService {
   }
 
   /**
-   * Recupera tutti i documenti con i loro metadati combinati
-   * Questa funzione prepara i dati nel formato richiesto dal worker
+   * Recupera tutti i documenti navigando l'albero completo
    */
   private async fetchAllDocumentsWithMetadata(): Promise<Array<{id: number, text: string}>> {
     try {
-      // Recupera tutti i documenti tramite una ricerca vuota
-      const allNodes = await this.dbService.searchDocuments('', []);
-      
-      console.log(`Service: Trovati ${allNodes.length} nodi nell'albero`);
+      // 1. Recupera l'albero completo dal DB
+      const roots = await this.dbService.searchDocuments('', []);
+      console.log(`Service: Albero recuperato con ${roots.length} nodi radice.`);
+
+      // 2. FUNZIONE HELPER: Appiattisce l'albero per estrarre tutti i file
+      const extractFilesRecursively = (nodes: any[]): any[] => {
+        let files: any[] = [];
+        for (const node of nodes) {
+          // Se è un file, lo prendiamo
+          if (node.type === 'file' && node.fileId) {
+            files.push(node);
+          }
+          // Se è una cartella (o ha figli), scendiamo in profondità
+          if (node.children && node.children.length > 0) {
+            files = files.concat(extractFilesRecursively(node.children));
+          }
+        }
+        return files;
+      };
+
+      // 3. Estraiamo la lista piatta di tutti i file
+      const allFiles = extractFilesRecursively(roots);
+      console.log(`Service: Estratti ${allFiles.length} file totali dall'albero.`);
       
       const documents: Array<{id: number, text: string}> = [];
       
-      // Processa ogni nodo per estrarre i file
-      for (const node of allNodes) {
-        // Consideriamo solo i nodi di tipo 'file' con un fileId valido
-        if (node.type === 'file' && node.fileId) {
+      // 4. Processa ogni file trovato
+      for (const node of allFiles) {
           try {
-            // Recupera i metadati per questo documento
+            // Recupera metadati specifici per il file o documento
             const metadata = await this.dbService.getDocumentMetadata(node.fileId);
             
-            // Combina i metadati in un testo ricercabile
             const metadataText = metadata
               .map(m => `${m.meta_key}: ${m.meta_value}`)
               .join('. ');
             
-            // Se non ci sono metadati, usa almeno l'ID
-            const combinedText = metadataText || `Documento ${node.fileId}`;
+            // Testo combinato per l'AI
+            const combinedText = (metadataText || '') + ` File: ${node.name}`;
             
             documents.push({
               id: node.fileId,
@@ -167,21 +182,16 @@ export class SearchService {
             });
             
           } catch (err) {
-            console.warn(`Service: Impossibile recuperare metadati per documento ${node.fileId}:`, err);
-            // Aggiungi comunque il documento con testo minimo
-            documents.push({
-              id: node.fileId,
-              text: `Documento ${node.fileId}`
-            });
+            console.warn(`Service: Errore metadati per file ${node.fileId}`, err);
+            documents.push({ id: node.fileId, text: node.name });
           }
-        }
       }
       
-      console.log(`Service: Preparati ${documents.length} documenti per indicizzazione`);
+      console.log(`Service: Preparati ${documents.length} documenti per l'AI.`);
       return documents;
       
     } catch (error) {
-      console.error('Service: Errore nel recupero dei documenti:', error);
+      console.error('Service: Errore recupero documenti:', error);
       return [];
     }
   }
@@ -271,4 +281,27 @@ export class SearchService {
       .replace(/^./, str => str.toUpperCase())
       .trim();
   }
+
+  async getEmbeddingDebug(text: string): Promise<number[]> {
+  if (!this.worker || !this.isWorkerReady) throw new Error('Worker AI non pronto');
+
+  return new Promise((resolve, reject) => {
+    const handler = ({ data }: MessageEvent) => {
+      if (data.type === 'EMBEDDING_GENERATED') {
+        this.worker?.removeEventListener('message', handler);
+        // Convertiamo Float32Array in array normale per facilità di gestione in Angular
+        resolve(Array.from(data.vector));
+      } else if (data.type === 'ERROR') {
+        this.worker?.removeEventListener('message', handler);
+        reject(new Error(data.error.message));
+      }
+    };
+
+    this.worker!.addEventListener('message', handler);
+    this.worker!.postMessage({
+      type: 'GENERATE_EMBEDDING',
+      payload: { text }
+    });
+  });
+}
 }

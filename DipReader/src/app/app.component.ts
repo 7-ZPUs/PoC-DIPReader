@@ -37,6 +37,11 @@ export class AppComponent implements OnInit {
   integrityStatus: 'none' | 'loading' | 'valid' | 'invalid' | 'error' = 'none';
   integrityVerifiedAt: string | null = null;
 
+  semanticQuery: string = '';
+  generatedVector: number[] | null = null;
+  semanticResults: any[] = [];
+  isCalculatingVector = false;
+
   constructor(
     private dipService: DipReaderService,
     private cdr: ChangeDetectorRef,
@@ -218,14 +223,20 @@ export class AppComponent implements OnInit {
   async runIndexer() {
     try {
       await this.dbService.indexDirectory();
-      alert('Indicizzazione completata! Ora puoi cercare i file.');
 
-      // Carica i filtri dopo l'indicizzazione
-      await this.loadSearchKeys();
-
-      // Carica l'albero completo
       this.fileTree = await this.dbService.getTreeFromDb();
+      await this.loadSearchKeys();
       this.cdr.detectChanges();
+
+      console.log('Avvio indicizzazione semantica (AI)...');
+      
+      this.searchService.reindexAll().then(() => {
+         console.log('✅ Indicizzazione AI completata con successo.');
+         alert('Indicizzazione Completata! Ora puoi usare la ricerca semantica.');
+      }).catch(err => {
+         console.error('Errore AI:', err);
+         alert('Indicizzazione SQL ok, ma errore AI: ' + err.message);
+      });
     } catch (error) {
       console.error('Error running indexer:', error);
       alert('Failed to import directory. Please check console for details.');
@@ -247,4 +258,42 @@ export class AppComponent implements OnInit {
     if (!fileInfo) return [];
     return Array.isArray(fileInfo) ? fileInfo : [fileInfo];
   }
+
+  // app.component.ts
+
+async onTestSemanticSearch() {
+  if (!this.semanticQuery.trim()) return;
+  
+  this.isCalculatingVector = true;
+  this.generatedVector = null;
+  this.semanticResults = [];
+
+  try {
+    // FASE 1: Calcolo Vettore (Costo: ALTO)
+    console.log('Calcolo embedding...');
+    const vector = await this.searchService.getEmbeddingDebug(this.semanticQuery);
+    this.generatedVector = vector;
+
+    // FASE 2: Ricerca usando il vettore (Costo: QUASI ZERO)
+    console.log('Esecuzione ricerca per vettore...');
+    // Passiamo 'vector' invece di 'this.semanticQuery'
+    const rawResults = await this.searchService.searchSemantic(vector);
+    
+    // ... resto del codice per mappare i risultati ...
+    this.semanticResults = await Promise.all(rawResults.map(async (res) => {
+        // ... (come prima) ...
+         return {
+          id: res.id,
+          score: (res.score * 100).toFixed(2) + '%',
+          name: `Doc #${res.id}` 
+        };
+    }));
+
+  } catch (e) {
+    console.error('Errore semantico:', e);
+    alert('Errore durante la ricerca semantica: ' + (e as any).message);
+  } finally {
+    this.isCalculatingVector = false;
+  }
+}
 }

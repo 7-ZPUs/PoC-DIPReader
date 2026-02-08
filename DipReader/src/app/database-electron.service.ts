@@ -1,6 +1,13 @@
 import { Injectable } from '@angular/core';
-import { FileNode } from './dip-reader.service';
 import { Filter } from './filter-manager';
+
+export interface FileNode {
+  name: string;
+  type: 'folder' | 'file';
+  children: FileNode[];
+  expanded?: boolean;
+  fileId?: number; // ID del file nel database (solo per nodi di tipo 'file')
+}
 
 // Type definitions for the Electron API
 declare global {
@@ -21,6 +28,15 @@ declare global {
       };
       file: {
         read: (filePath: string) => Promise<{ success: boolean; data: ArrayBuffer; mimeType: string }>;
+      };
+      ai: {
+        init: () => Promise<{ status: string }>;
+        index: (id: number, text: string) => Promise<{ status: string; id: number }>;
+        generateEmbedding: (text: string) => Promise<number[]>;
+        search: (query: string | number[]) => Promise<Array<{ id: number; score: number }>>;
+        reindexAll: (documents: Array<{ id: number; text: string }>) => Promise<{ status: string; indexed: number }>;
+        state: () => Promise<{ initialized: boolean; indexedDocuments: number }>;
+        clear: () => Promise<{ status: string }>;
       };
     };
   }
@@ -149,6 +165,67 @@ export class DatabaseService {
    */
   getCurrentDipPath(): string | null {
     return this.currentDipPath;
+  }
+
+  /**
+   * Recupera i metadati per un file dal database.
+   */
+  async getMetadataForFile(fileId: number): Promise<any> {
+    const attributes = await this.getMetadataAttributes(fileId);
+    if (attributes.length === 0) {
+      return { error: 'Metadati non trovati nel DB.' };
+    }
+    // Converte array in oggetto
+    return attributes.reduce((acc, attr) => ({ ...acc, [attr.key]: attr.value }), {});
+  }
+
+  /**
+   * Recupera il percorso fisico per un file dal database.
+   */
+  async getPhysicalPathForFile(fileId: number): Promise<string | undefined> {
+    return this.getPhysicalPathFromDb(fileId);
+  }
+
+  /**
+   * Verifica l'integrità di un file leggendolo, calcolando l'hash SHA-256
+   * e confrontandolo con quello memorizzato nei metadati
+   */
+  async verifyFileIntegrity(fileId: number): Promise<{ valid: boolean, calculated: string, expected: string }> {
+    try {
+      // Get file path
+      const filePath = await this.getPhysicalPathForFile(fileId);
+      if (!filePath) {
+        throw new Error('File path not found');
+      }
+
+      // Read file via IPC
+      const fileData = await window.electronAPI.file.read(filePath);
+      if (!fileData.success) {
+        throw new Error('Failed to read file');
+      }
+
+      // Get expected hash from metadata
+      const metadata = await this.getDocumentMetadata(fileId);
+      const expectedHash = metadata['Impronta'];
+      
+      if (!expectedHash) {
+        throw new Error('Hash not found in metadata');
+      }
+
+      // Calculate SHA-256
+      const hashBuffer = await crypto.subtle.digest('SHA-256', fileData.data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const calculatedHash = btoa(String.fromCharCode(...hashArray));
+
+      return {
+        valid: calculatedHash === expectedHash,
+        calculated: calculatedHash,
+        expected: expectedHash
+      };
+    } catch (error) {
+      console.error('[DatabaseService] Error verifying file integrity:', error);
+      throw error;
+    }
   }
 
   /**

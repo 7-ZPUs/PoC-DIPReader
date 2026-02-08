@@ -1,10 +1,11 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DipReaderService, FileNode } from './dip-reader.service';
+import { DatabaseService, FileNode } from './database-electron.service';
 import { MetadataViewerComponent } from './metadata-viewer.component';
 import { Filter } from './filter-manager';
-import { DatabaseService } from './database-electron.service';
+
+import { SearchService } from './services/search.service';
 
 @Component({
   selector: 'app-root',
@@ -35,12 +36,24 @@ export class AppComponent implements OnInit {
   integrityStatus: 'none' | 'loading' | 'valid' | 'invalid' | 'error' = 'none';
   integrityVerifiedAt: string | null = null;
 
-  constructor(
-    private dipService: DipReaderService,
-    private cdr: ChangeDetectorRef,
-    private dbService: DatabaseService
-  ) { }
+  semanticQuery: string = '';
+  generatedVector: number[] | null = null;
+  semanticResults: any[] = [];
+  isCalculatingVector = false;
 
+  constructor(
+    private cdr: ChangeDetectorRef,
+    private dbService: DatabaseService,
+    private searchService: SearchService
+  ) { 
+    console.log('App avviata. Attendo 5 secondi prima di indicizzare per l\'AI...');
+    
+    setTimeout(() => {
+      this.searchService.reindexAll().then(() => {
+        console.log('Test indicizzazione completato. Ora puoi rimuovere questo blocco.');
+      });
+    }, 5000); 
+  }
   ngOnInit() {
     //
   }
@@ -141,7 +154,7 @@ export class AppComponent implements OnInit {
     }
 
     // Recupera il percorso fisico corretto dal servizio
-    const physicalPath = await this.dipService.getPhysicalPathForFile(node.fileId);
+    const physicalPath = await this.dbService.getPhysicalPathForFile(node.fileId);
     if (physicalPath) {
       console.log(`Apertura percorso fisico: ${physicalPath}`);
       // Apre il file in una nuova scheda
@@ -158,7 +171,7 @@ export class AppComponent implements OnInit {
       return;
     }
 
-    const physicalPath = await this.dipService.getPhysicalPathForFile(node.fileId);
+    const physicalPath = await this.dbService.getPhysicalPathForFile(node.fileId);
     if (physicalPath) {
       const link = document.createElement('a');
       link.href = physicalPath;
@@ -181,7 +194,7 @@ export class AppComponent implements OnInit {
     this.integrityStatus = 'loading';
     this.integrityVerifiedAt = null;
     try {
-      const result = await this.dipService.verifyFileIntegrity(node.fileId);
+      const result = await this.dbService.verifyFileIntegrity(node.fileId);
       this.integrityStatus = result.valid ? 'valid' : 'invalid';
       this.integrityVerifiedAt = new Date().toISOString();
       this.cdr.detectChanges(); // Forza l'aggiornamento della UI prima dell'alert
@@ -207,14 +220,20 @@ export class AppComponent implements OnInit {
   async runIndexer() {
     try {
       await this.dbService.indexDirectory();
-      alert('Indicizzazione completata! Ora puoi cercare i file.');
 
-      // Carica i filtri dopo l'indicizzazione
-      await this.loadSearchKeys();
-
-      // Carica l'albero completo
       this.fileTree = await this.dbService.getTreeFromDb();
+      await this.loadSearchKeys();
       this.cdr.detectChanges();
+
+      console.log('Avvio indicizzazione semantica (AI)...');
+      
+      this.searchService.reindexAll().then(() => {
+         console.log('Indicizzazione AI completata con successo.');
+         alert('Indicizzazione Completata! Ora puoi usare la ricerca semantica.');
+      }).catch(err => {
+         console.error('Errore AI:', err);
+         alert('Indicizzazione SQL ok, ma errore AI: ' + err.message);
+      });
     } catch (error) {
       console.error('Error running indexer:', error);
       alert('Failed to import directory. Please check console for details.');
@@ -236,4 +255,42 @@ export class AppComponent implements OnInit {
     if (!fileInfo) return [];
     return Array.isArray(fileInfo) ? fileInfo : [fileInfo];
   }
+
+  // app.component.ts
+
+async onTestSemanticSearch() {
+  if (!this.semanticQuery.trim()) return;
+  
+  this.isCalculatingVector = true;
+  this.generatedVector = null;
+  this.semanticResults = [];
+
+  try {
+    // FASE 1: Calcolo Vettore (Costo: ALTO)
+    console.log('Calcolo embedding...');
+    const vector = await this.searchService.getEmbeddingDebug(this.semanticQuery);
+    this.generatedVector = vector;
+
+    // FASE 2: Ricerca usando il vettore (Costo: QUASI ZERO)
+    console.log('Esecuzione ricerca per vettore...');
+    // Passiamo 'vector' invece di 'this.semanticQuery'
+    const rawResults = await this.searchService.searchSemantic(vector);
+    
+    // ... resto del codice per mappare i risultati ...
+    this.semanticResults = await Promise.all(rawResults.map(async (res) => {
+        // ... (come prima) ...
+         return {
+          id: res.id,
+          score: (res.score * 100).toFixed(2) + '%',
+          name: `Doc #${res.id}` 
+        };
+    }));
+
+  } catch (e) {
+    console.error('Errore semantico:', e);
+    alert('Errore durante la ricerca semantica: ' + (e as any).message);
+  } finally {
+    this.isCalculatingVector = false;
+  }
+}
 }

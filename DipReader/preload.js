@@ -24,5 +24,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // File operations
     file: {
         read: (filePath) => ipcRenderer.invoke('file:read', filePath)
+    },
+    
+    // AI Semantic Search operations
+    ai: {
+        init: () => ipcRenderer.invoke('ai:init'),
+        index: (id, text) => ipcRenderer.invoke('ai:index', id, text),
+        generateEmbedding: (text) => ipcRenderer.invoke('ai:generate-embedding', text),
+        search: (query) => ipcRenderer.invoke('ai:search', query),
+        reindexAll: (documents) => ipcRenderer.invoke('ai:reindex-all', documents),
+        state: () => ipcRenderer.invoke('ai:state'),
+        clear: () => ipcRenderer.invoke('ai:clear')
     }
 });

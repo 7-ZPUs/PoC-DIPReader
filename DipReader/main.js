@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const dbHandler = require('./db-handler');
 const IndexerMain = require('./indexer-main');
+const aiSearch = require('./ai-search');
 
 // 1. Registra il protocollo come "Secure" PRIMA che l'app sia ready
 protocol.registerSchemesAsPrivileged([
@@ -250,6 +251,90 @@ function getMimeType(filePath) {
     };
     return mimeTypes[ext] || 'application/octet-stream';
 }
+
+// ============================================
+// AI Semantic Search IPC Handlers
+// ============================================
+
+// Initialize AI model
+ipcMain.handle('ai:init', async () => {
+    try {
+        console.log('[IPC] Initializing AI model...');
+        const result = await aiSearch.initialize();
+        console.log('[IPC] AI model initialized:', result);
+        return result;
+    } catch (err) {
+        console.error('[IPC] AI initialization error:', err);
+        throw err;
+    }
+});
+
+// Index a document for semantic search
+ipcMain.handle('ai:index', async (event, id, text) => {
+    try {
+        const result = await aiSearch.indexDocument(id, text);
+        return result;
+    } catch (err) {
+        console.error('[IPC] AI indexing error:', err);
+        throw err;
+    }
+});
+
+// Generate embedding for text
+ipcMain.handle('ai:generate-embedding', async (event, text) => {
+    try {
+        const embedding = await aiSearch.generateEmbedding(text);
+        return embedding;
+    } catch (err) {
+        console.error('[IPC] AI embedding generation error:', err);
+        throw err;
+    }
+});
+
+// Search similar documents
+ipcMain.handle('ai:search', async (event, query) => {
+    try {
+        const results = await aiSearch.search(query);
+        return results;
+    } catch (err) {
+        console.error('[IPC] AI search error:', err);
+        throw err;
+    }
+});
+
+// Reindex all documents
+ipcMain.handle('ai:reindex-all', async (event, documents) => {
+    try {
+        console.log('[IPC] Reindexing all documents:', documents.length);
+        const result = await aiSearch.reindexAll(documents);
+        return result;
+    } catch (err) {
+        console.error('[IPC] AI reindexing error:', err);
+        throw err;
+    }
+});
+
+// Get AI state
+ipcMain.handle('ai:state', async () => {
+    try {
+        const state = aiSearch.getState();
+        return state;
+    } catch (err) {
+        console.error('[IPC] AI state error:', err);
+        throw err;
+    }
+});
+
+// Clear AI index
+ipcMain.handle('ai:clear', async () => {
+    try {
+        const result = aiSearch.clearIndex();
+        return result;
+    } catch (err) {
+        console.error('[IPC] AI clear error:', err);
+        throw err;
+    }
+});
 
 // ============================================
 // End of IPC Handlers

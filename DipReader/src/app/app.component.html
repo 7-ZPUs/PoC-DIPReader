@@ -1,6 +1,58 @@
 <div class="container">
   <div class="sidebar">
     <h3>Esplora DIP</h3>
+
+    <div class="semantic-playground" style="margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 8px; background: #f9f9f9;">
+  <h3>Laboratorio Semantico</h3>
+  
+  <div style="display: flex; gap: 10px;">
+    <input 
+      type="text" 
+      [(ngModel)]="semanticQuery" 
+      placeholder="Descrivi il concetto (es. 'Spese mediche', 'Fatture hardware')..."
+      style="flex: 1; padding: 8px;"
+      (keyup.enter)="onTestSemanticSearch()"
+    >
+    <button (click)="onTestSemanticSearch()" [disabled]="isCalculatingVector || !semanticQuery">
+      {{ isCalculatingVector ? 'Calcolo...' : 'Analizza & Cerca' }}
+    </button>
+  </div>
+
+  <div *ngIf="generatedVector" style="margin-top: 15px;">
+    <strong>Vettore Generato (Primi 50 valori di 384):</strong>
+    <div style="
+      background: #000; 
+      color: #0f0; 
+      font-family: monospace; 
+      font-size: 12px; 
+      padding: 10px; 
+      border-radius: 4px; 
+      height: 100px; 
+      overflow-y: auto;
+      word-break: break-all;
+    ">
+      [
+      <span *ngFor="let val of generatedVector.slice(0, 50); let last = last">
+        {{ val.toFixed(4) }}<span *ngIf="!last">, </span>
+      </span>
+      <span *ngIf="generatedVector.length > 50">... altri {{generatedVector.length - 50}} valori</span>
+      ]
+    </div>
+    <small style="color: #666;">Dimensione totale vettore: {{ generatedVector.length }} dimensioni</small>
+  </div>
+
+  <div *ngIf="semanticResults.length > 0" style="margin-top: 15px;">
+    <strong>Risultati trovati (per similarità):</strong>
+    <ul style="list-style: none; padding: 0;">
+      <li *ngFor="let res of semanticResults" style="padding: 8px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between;">
+        <span>📄 {{ res.name }} (ID: {{ res.id }})</span>
+        <span style="background: #e1f5fe; color: #0277bd; padding: 2px 8px; border-radius: 12px; font-size: 0.9em;">
+          Score: {{ res.score }}
+        </span>
+      </li>
+    </ul>
+  </div>
+</div>
     
     <!-- Pannello di Ricerca -->
     <button (click)="runIndexer()" class="btn-primary" style="margin-bottom: 10px; width: 100%;">📂 Importa Directory</button>

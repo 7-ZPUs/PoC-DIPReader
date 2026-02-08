@@ -27,8 +27,23 @@
               },
               {
                 "glob": "**/*",
+                "input": "src/assets",
+                "output": "/assets"
+              },
+              {
+                "glob": "**/*",
                 "input": "node_modules/@sqlite.org/sqlite-wasm/sqlite-wasm/jswasm",
-                "output": "/"
+                "output": "/assets/sqlite-wasm"
+              },
+              {
+                "glob": "**/*.wasm",
+                "input": "src/assets/onnx-wasm",
+                "output": "/assets/onnx-wasm"
+              },
+              {
+                "glob": "**/*.wasm",
+                "input": "node_modules/onnxruntime-web/dist",
+                "output": "/assets/onnx-wasm"
               }
             ],
             "styles": [

@@ -51,11 +51,11 @@ export class AppComponent implements OnInit {
   ) { 
     console.log('App avviata. Attendo 5 secondi prima di indicizzare per l\'AI...');
     
-    setTimeout(() => {
+    /*setTimeout(() => {
       this.searchService.reindexAll().then(() => {
         console.log('Test indicizzazione completato. Ora puoi rimuovere questo blocco.');
       });
-    }, 5000); 
+    }, 5000); */
   }
   ngOnInit() {
     //
@@ -266,34 +266,46 @@ async onTestSemanticSearch() {
   
   this.isCalculatingVector = true;
   this.generatedVector = null;
-  this.semanticResults = [];
+  this.semanticResults = []; // Pulisci i risultati precedenti
 
   try {
-    // FASE 1: Calcolo Vettore (Costo: ALTO)
-    console.log('Calcolo embedding...');
+    console.log('1. Richiesta embedding...');
     const vector = await this.searchService.getEmbeddingDebug(this.semanticQuery);
+    
+    console.log('2. Embedding ricevuto, lunghezza:', vector.length);
     this.generatedVector = vector;
 
-    // FASE 2: Ricerca usando il vettore (Costo: QUASI ZERO)
-    console.log('Esecuzione ricerca per vettore...');
-    // Passiamo 'vector' invece di 'this.semanticQuery'
+    console.log('3. Esecuzione ricerca...');
     const rawResults = await this.searchService.searchSemantic(vector);
     
-    // ... resto del codice per mappare i risultati ...
-    this.semanticResults = await Promise.all(rawResults.map(async (res) => {
-        // ... (come prima) ...
-         return {
-          id: res.id,
-          score: (res.score * 100).toFixed(2) + '%',
-          name: `Doc #${res.id}` 
-        };
-    }));
+    if (rawResults.length === 0) {
+      this.isCalculatingVector = false;
+      return;
+    }
 
-  } catch (e) {
-    console.error('Errore semantico:', e);
-    alert('Errore durante la ricerca semantica: ' + (e as any).message);
+    const ids = rawResults.map(r => r.id);
+    const fileDetails = await this.dbService.getFilesByIds(ids);
+
+    console.log('4. Risultati:', rawResults);
+    this.semanticResults = fileDetails.map(file => {
+      const match = rawResults.find(r => r.id === file.fileId);
+      return {
+        ...file,
+        score: match ? (match.score * 100).toFixed(1) + '%' : 'N/A'
+      };
+    });
+    this.semanticResults.sort((a, b) => parseFloat(b.score) - parseFloat(a.score));
+
+  } catch (e: any) {
+    console.error('ERRORE CRITICO:', e);
+    alert('Errore AI: ' + e.message);
   } finally {
     this.isCalculatingVector = false;
+    this.cdr.detectChanges();
   }
+}
+
+onSemanticResultClick(node: any) {
+    this.handleNodeClick(node);
 }
 }

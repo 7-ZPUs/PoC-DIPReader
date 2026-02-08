@@ -28,6 +28,7 @@ const vectorCache = new Map<number, Float32Array>();
 // ============================================================================
 addEventListener('message', async ({ data }) => {
   try {
+    const requestId = data.requestId;
     switch (data.type) {
       case 'INIT':
         await initSystem(data.payload);
@@ -41,7 +42,7 @@ addEventListener('message', async ({ data }) => {
 
       case 'SEARCH':
         const results = await search(data.payload.query);
-        postMessage({ type: 'SEARCH_RESULT', results });
+        postMessage({ type: 'SEARCH_RESULT',requestId: requestId, results });
         break;
 
       case 'REINDEX_ALL':
@@ -55,12 +56,12 @@ addEventListener('message', async ({ data }) => {
         }
         const output = await embedder(data.payload.text, { pooling: 'mean', normalize: true });
         // Inviamo il Float32Array puro al main thread
-        postMessage({ type: 'EMBEDDING_GENERATED', vector: output.data });
+        postMessage({ type: 'EMBEDDING_GENERATED',requestId: requestId, vector: output.data });
         break;
         }
   } catch (err: any) {
     console.error('Worker Error:', err);
-    postMessage({ type: 'ERROR', error: { message: err.message } });
+    postMessage({ type: 'ERROR',requestId: data.requestId, error: { message: err.message } });
   }
 });
 

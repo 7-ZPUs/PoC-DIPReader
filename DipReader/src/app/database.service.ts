@@ -638,4 +638,24 @@ export class DatabaseService {
     );
     return rows;
   }
+
+  async getFilesByIds(ids: number[]): Promise<any[]> {
+  if (!ids || ids.length === 0) return [];
+
+  // Costruisci la query SQL dinamica per recuperare solo i file trovati
+  const placeholders = ids.map(() => '?').join(',');
+  const sql = `SELECT id, relative_path FROM file WHERE id IN (${placeholders})`;
+
+  // Esegui la query
+  const rows = await this.executeQuery(sql, ids);
+
+  // Mappa i risultati nel formato FileNode
+  return rows.map((row: any) => ({
+    fileId: row.id,
+    name: row.relative_path.split('/').pop(), // Estrae solo il nome file dal percorso
+    type: 'file',
+    expanded: false,
+    children: []
+  }));
+}
 }

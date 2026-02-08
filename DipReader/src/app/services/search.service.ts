@@ -38,23 +38,12 @@ export class SearchService {
   }
 
   async searchSemantic(query: string | number[]): Promise<{id: number, score: number}[]> {
-    if (!this.worker || !this.isWorkerReady) {
-      console.warn('Worker non pronto, salto ricerca semantica.');
-      return [];
-    }
-
-    return new Promise((resolve, reject) => {
-      const handler = ({ data }: MessageEvent) => {
-        if (data.type === 'SEARCH_RESULT') {
-          this.worker?.removeEventListener('message', handler);
-          resolve(data.results);
-        }
-      };
-      
-      this.worker!.addEventListener('message', handler);
-      this.worker!.postMessage({ type: 'SEARCH', payload: { query } });
-    });
+  const response = await this.postMessageAsync('SEARCH', { query });
+  if (response.type === 'SEARCH_RESULT') {
+    return response.results;
   }
+  return [];
+}
 
   indexDocument(docId: number, metadataCombinedText: string) {
     if (this.worker) {
@@ -282,26 +271,42 @@ export class SearchService {
       .trim();
   }
 
-  async getEmbeddingDebug(text: string): Promise<number[]> {
-  if (!this.worker || !this.isWorkerReady) throw new Error('Worker AI non pronto');
+
+  private postMessageAsync(type: string, payload: any): Promise<any> {
+  if (!this.worker || !this.isWorkerReady) {
+    return Promise.reject(new Error('Worker AI non pronto'));
+  }
+
+  // Genera un ID univoco per questa richiesta
+  const requestId = Math.random().toString(36).substring(7);
 
   return new Promise((resolve, reject) => {
     const handler = ({ data }: MessageEvent) => {
-      if (data.type === 'EMBEDDING_GENERATED') {
-        this.worker?.removeEventListener('message', handler);
-        // Convertiamo Float32Array in array normale per facilità di gestione in Angular
-        resolve(Array.from(data.vector));
-      } else if (data.type === 'ERROR') {
-        this.worker?.removeEventListener('message', handler);
+      // Controllo CRITICO: Elabora solo se l'ID corrisponde
+      if (data.requestId !== requestId) return;
+
+      this.worker?.removeEventListener('message', handler);
+
+      if (data.type === 'ERROR') {
         reject(new Error(data.error.message));
+      } else {
+        resolve(data);
       }
     };
 
     this.worker!.addEventListener('message', handler);
-    this.worker!.postMessage({
-      type: 'GENERATE_EMBEDDING',
-      payload: { text }
-    });
+    
+    // Invia il messaggio con l'ID
+    this.worker!.postMessage({ type, requestId, payload });
   });
+}
+
+  async getEmbeddingDebug(text: string): Promise<number[]> {
+  const response = await this.postMessageAsync('GENERATE_EMBEDDING', { text });
+  // Verifica il tipo di risposta
+  if (response.type === 'EMBEDDING_GENERATED') {
+    return Array.from(response.vector);
+  }
+  throw new Error('Risposta inattesa dal worker');
 }
 }

@@ -41,17 +41,34 @@
     <small style="color: #666;">Dimensione totale vettore: {{ generatedVector.length }} dimensioni</small>
   </div>
 
-  <div *ngIf="semanticResults.length > 0" style="margin-top: 15px;">
-    <strong>Risultati trovati (per similarità):</strong>
-    <ul style="list-style: none; padding: 0;">
-      <li *ngFor="let res of semanticResults" style="padding: 8px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between;">
-        <span>📄 {{ res.name }} (ID: {{ res.id }})</span>
-        <span style="background: #e1f5fe; color: #0277bd; padding: 2px 8px; border-radius: 12px; font-size: 0.9em;">
-          Score: {{ res.score }}
-        </span>
-      </li>
-    </ul>
-  </div>
+ <div *ngIf="semanticResults.length > 0" style="margin-top: 15px;">
+  <strong>Risultati trovati (per similarità):</strong>
+  <ul style="list-style: none; padding: 0;">
+    <li *ngFor="let res of semanticResults" 
+        (click)="onSemanticResultClick(res)"
+        class="semantic-item"
+        style="
+          padding: 8px; 
+          border-bottom: 1px solid #eee; 
+          display: flex; 
+          justify-content: space-between; 
+          cursor: pointer; 
+          transition: background 0.2s;
+        "
+        onmouseover="this.style.background='#f0f8ff'"
+        onmouseout="this.style.background='transparent'"
+    >
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span>📄</span>
+        <span style="font-weight: 500;">{{ res.name }}</span>
+      </div>
+
+      <span style="background: #e1f5fe; color: #0277bd; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; align-self: center;">
+        {{ res.score }}
+      </span>
+    </li>
+  </ul>
+</div>
 </div>
     
     <!-- Pannello di Ricerca -->

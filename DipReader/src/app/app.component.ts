@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { DipReaderService, FileNode } from './dip-reader.service';
 import { MetadataViewerComponent } from './metadata-viewer.component';
 import { Filter } from './filter-manager';
-import { DatabaseService } from './database.service';
+import { DatabaseService } from './database-electron.service';
 
 @Component({
   selector: 'app-root',

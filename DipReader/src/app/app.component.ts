@@ -110,17 +110,36 @@ export class AppComponent implements OnInit {
   }
 
   async handleNodeClick(node: FileNode) {
+    console.log('[AppComponent] Node clicked:', {
+      name: node.name,
+      type: node.type,
+      fileId: node.fileId,
+      documentId: node.documentId
+    });
+    
     if (node.type === 'folder') {
       node.expanded = !node.expanded;
-      // Deseleziona il file quando si interagisce con le cartelle
-      this.selectedFile = null;
-      this.integrityStatus = 'none';
-      this.integrityVerifiedAt = null;
-      this.metadata = null;
+      
+      // If it's a document node (has documentId), select it to show metadata
+      if (node.documentId) {
+        console.log('[AppComponent] Selecting document node with ID:', node.documentId);
+        this.selectedFile = node;
+        this.integrityStatus = 'none';
+        this.integrityVerifiedAt = null;
+        this.metadata = null;
+      } else {
+        // Regular folder without document, deselect
+        console.log('[AppComponent] Deselecting - regular folder');
+        this.selectedFile = null;
+        this.integrityStatus = 'none';
+        this.integrityVerifiedAt = null;
+        this.metadata = null;
+      }
     } else {
-      // Imposta il file selezionato così la parte destra si aggiorna
+      // File node selected
+      console.log('[AppComponent] Selecting file node with ID:', node.fileId);
       this.selectedFile = node;
-      this.integrityStatus = 'none'; // Resetta lo stato della verifica per il nuovo file
+      this.integrityStatus = 'none'; 
       this.integrityVerifiedAt = null;
 
       if (!node.fileId) {
@@ -128,14 +147,6 @@ export class AppComponent implements OnInit {
         this.metadata = { error: 'File ID non disponibile.' };
         return;
       }
-
-      // Recupera i metadati in modo ASINCRONO dal database usando fileId
-      const attributes = await this.dbService.getMetadataAttributes(node.fileId);
-      // Converte array in oggetto per retrocompatibilità
-      this.metadata = attributes.length > 0
-        ? attributes.reduce((acc, attr) => ({ ...acc, [attr.key]: attr.value }), {})
-        : { error: 'Metadati non trovati nel DB.' };
-      console.log(`Metadati per file ID ${node.fileId}:`, this.metadata);
 
       // Carica lo stato di integrità salvato, se disponibile
       const storedStatus = await this.dbService.getIntegrityStatus(node.fileId);
@@ -145,6 +156,9 @@ export class AppComponent implements OnInit {
         this.cdr.detectChanges();
       }
     }
+    
+    // Force change detection to update the view
+    this.cdr.detectChanges();
   }
 
   async openFile(node: FileNode) {

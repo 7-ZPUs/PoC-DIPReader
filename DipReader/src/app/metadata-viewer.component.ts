@@ -11,27 +11,50 @@ import { DatabaseService } from './database-electron.service';
 })
 export class MetadataViewerComponent implements OnChanges {
   @Input() fileId: number | undefined = undefined;
+  @Input() documentId: number | undefined = undefined;
   attributes: { key: string, value: string }[] = [];
   loading = false;
 
   constructor(private dbService: DatabaseService, private cdr: ChangeDetectorRef) {}
 
   async ngOnChanges(changes: SimpleChanges) {
-    if (changes['fileId']) {
-      if (this.fileId) {
+    // Clear previous data
+    this.attributes = [];
+    
+    if (changes['fileId'] || changes['documentId']) {
+      console.log('[MetadataViewer] Changes detected - fileId:', this.fileId, 'documentId:', this.documentId);
+      
+      // Priority: if fileId is provided, use it, otherwise use documentId
+      if (this.fileId !== undefined && this.fileId !== null) {
         this.loading = true;
-        this.cdr.detectChanges(); // Forza l'aggiornamento per mostrare "Caricamento..."
+        this.cdr.detectChanges();
         try {
-          this.attributes = await this.dbService.getMetadataAttributes(this.fileId);
+          console.log('[MetadataViewer] Loading file metadata for fileId:', this.fileId);
+          const fileId = this.fileId; // TypeScript type narrowing
+          this.attributes = await this.dbService.getMetadataAttributes(fileId);
+          console.log('[MetadataViewer] Loaded', this.attributes.length, 'attributes for file');
         } catch (err) {
-          console.error('Errore recupero metadati:', err);
+          console.error('Errore recupero metadati file:', err);
           this.attributes = [];
         } finally {
           this.loading = false;
-          this.cdr.detectChanges(); // Forza l'aggiornamento per mostrare i dati
+          this.cdr.detectChanges();
         }
-      } else {
-        this.attributes = [];
+      } else if (this.documentId !== undefined && this.documentId !== null) {
+        this.loading = true;
+        this.cdr.detectChanges();
+        try {
+          console.log('[MetadataViewer] Loading document metadata for documentId:', this.documentId);
+          const documentId = this.documentId; // TypeScript type narrowing
+          this.attributes = await this.dbService.getDocumentMetadataByDocId(documentId);
+          console.log('[MetadataViewer] Loaded', this.attributes.length, 'attributes for document');
+        } catch (err) {
+          console.error('Errore recupero metadati documento:', err);
+          this.attributes = [];
+        } finally {
+          this.loading = false;
+          this.cdr.detectChanges();
+        }
       }
     }
   }

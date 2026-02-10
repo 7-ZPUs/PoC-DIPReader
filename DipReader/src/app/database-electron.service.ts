@@ -7,6 +7,7 @@ export interface FileNode {
   children: FileNode[];
   expanded?: boolean;
   fileId?: number; // ID del file nel database (solo per nodi di tipo 'file')
+  documentId?: number; // ID del documento logico (per nodi documento o file)
 }
 
 // Type definitions for the Electron API
@@ -204,9 +205,31 @@ export class DatabaseService {
         throw new Error('Failed to read file');
       }
 
-      // Get expected hash from metadata
-      const metadata = await this.getDocumentMetadata(fileId);
-      const expectedHash = metadata['Impronta'];
+      // Get expected hash from metadata - try file-level first, then document-level
+      let expectedHash = '';
+      
+      // First: look for Impronta associated with this specific file_id
+      const fileImprontaResult = await window.electronAPI.db.query(
+        `SELECT meta_value FROM metadata WHERE meta_key = 'Impronta' AND file_id = ?`,
+        [fileId]
+      );
+      if (fileImprontaResult?.length > 0) {
+        expectedHash = fileImprontaResult[0].meta_value;
+      } else {
+        // Fallback: look for document-level Impronta
+        const fileRow = await window.electronAPI.db.query(
+          `SELECT document_id FROM file WHERE id = ?`, [fileId]
+        );
+        if (fileRow?.length > 0) {
+          const docImprontaResult = await window.electronAPI.db.query(
+            `SELECT meta_value FROM metadata WHERE meta_key = 'Impronta' AND document_id = ? AND file_id IS NULL`,
+            [fileRow[0].document_id]
+          );
+          if (docImprontaResult?.length > 0) {
+            expectedHash = docImprontaResult[0].meta_value;
+          }
+        }
+      }
       
       if (!expectedHash) {
         throw new Error('Hash not found in metadata');
@@ -369,6 +392,7 @@ export class DatabaseService {
           const docNode: FileNode = {
             name: `Document: ${row.document_root_path}`,
             type: 'folder',
+            documentId: row.document_id,  // Add documentId here!
             children: []
           };
           docMap.set(row.document_id, docNode);
@@ -600,6 +624,7 @@ export class DatabaseService {
         f.id as file_id,
         f.relative_path as file_path,
         f.document_id,
+        f.is_main,
         d.root_path as document_path
       FROM file f
       JOIN document d ON d.id = f.document_id
@@ -630,22 +655,45 @@ export class DatabaseService {
       sql += ` WHERE ` + whereClauses.join(' AND ');
     }
 
-    sql += ` ORDER BY f.relative_path`;
+    sql += ` ORDER BY d.id, f.is_main DESC, f.relative_path`;
 
     const rows = await this.executeQuery<{
       file_id: number;
       file_path: string;
       document_id: number;
+      is_main: number;
       document_path: string;
     }[]>(sql, params);
 
-    // Convert to FileNode array
-    return rows.map(row => ({
-      name: row.file_path,
-      type: 'file' as const,
-      fileId: row.file_id,
-      children: []
-    }));
+    // Group files by document
+    const documentMap = new Map<number, FileNode>();
+    
+    for (const row of rows) {
+      if (!documentMap.has(row.document_id)) {
+        // Create document node
+        documentMap.set(row.document_id, {
+          name: `Documento: ${row.document_path || row.document_id}`,
+          type: 'folder',
+          documentId: row.document_id,
+          expanded: false,
+          children: []
+        });
+      }
+      
+      const docNode = documentMap.get(row.document_id)!;
+      const fileName = row.file_path.split('/').pop() || row.file_path;
+      
+      // Add file node to document
+      docNode.children.push({
+        name: `${row.is_main ? '📄 ' : '📎 '}${fileName}`,
+        type: 'file',
+        fileId: row.file_id,
+        documentId: row.document_id,
+        children: []
+      });
+    }
+
+    return Array.from(documentMap.values());
   }
 
   /**
@@ -676,6 +724,28 @@ export class DatabaseService {
         WHERE f.id = ? AND m.document_id IS NOT NULL
       `, [fileId]);
     }
+
+    return rows.map(row => ({
+      key: row.meta_key,
+      value: row.meta_value,
+      type: row.meta_type
+    }));
+  }
+
+  /**
+   * Get metadata attributes for a document
+   */
+  async getDocumentMetadataByDocId(documentId: number): Promise<Array<{ key: string; value: string; type: string }>> {
+    const rows = await this.executeQuery<{
+      meta_key: string;
+      meta_value: string;
+      meta_type: string;
+    }[]>(`
+      SELECT meta_key, meta_value, meta_type
+      FROM metadata
+      WHERE document_id = ? AND file_id IS NULL
+      ORDER BY meta_key
+    `, [documentId]);
 
     return rows.map(row => ({
       key: row.meta_key,

@@ -70,90 +70,90 @@ DipReader è un'applicazione Electron che indicizza e gestisce archivi DIP (Docu
 │  │  │   ai: {                                           │   │  │
 │  │  │     init, index, search, reindexAll,             │   │  │
 │  │  │     generateEmbedding, state, clear              │   │  │
-│  │  │   }                                               │   │  │
-│  │  │ })                                                 │   │  │
-│  │  └─────────────────────────────────────────────────────┘   │  │
-│  │                                                             │  │
-│  └─────────────────────────────────────────────────────────────┘  │
-│                          │                                        │
-│                          │ ipcRenderer.invoke()                   │
-│                          ▼                                        │
-│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │  │   }                                                 │    │ │
+│  │  │ })                                                  │    │ │
+│  │  └─────────────────────────────────────────────────────┘    │ │
+│  │                                                             │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+│                          │                                       │
+│                          │ ipcRenderer.invoke()                  │
+│                          ▼                                       │
+│  ┌────────────────────────────────────────────────────────────┐  │
 │  │          LAYER 3: MAIN PROCESS (Node.js Backend)           │  │
-│  │                      System Context                         │  │
-│  ├─────────────────────────────────────────────────────────────┤  │
-│  │                                                             │  │
+│  │                      System Context                        │  │
+│  ├────────────────────────────────────────────────────────────┤  │
+│  │                                                            │  │
 │  │  main.js                                                   │  │
-│  │  ┌──────────────────────────────────────────────────────┐  │  │
-│  │  │              IPC Handler Registry                    │  │  │
-│  │  │                                                      │  │  │
-│  │  │  Database Handlers (14):                           │  │  │
-│  │  │    • db:init         • db:open      • db:index     │  │  │
-│  │  │    • db:query        • db:list      • db:delete    │  │  │
-│  │  │    • db:export       • db:info                     │  │  │
-│  │  │    • dip:select-directory • file:read             │  │  │
-│  │  │                                                      │  │  │
-│  │  │  AI Handlers (7):                                  │  │  │
-│  │  │    • ai:init         • ai:index                    │  │  │
-│  │  │    • ai:search       • ai:reindex-all             │  │  │
-│  │  │    • ai:generate-embedding                         │  │  │
-│  │  │    • ai:state        • ai:clear                    │  │  │
-│  │  └──────────┬────────────────────────┬─────────────────┘  │  │
-│  │             │                        │                    │  │
-│  │             ▼                        ▼                    │  │
-│  │  ┌──────────────────┐    ┌────────────────────────┐      │  │
-│  │  │  db-handler.js   │    │   indexer-main.js     │      │  │
-│  │  ├──────────────────┤    ├────────────────────────┤      │  │
-│  │  │ better-sqlite3   │    │ XML Parsing (xmldom)  │      │  │
-│  │  │                  │    │ File System (fs)      │      │  │
-│  │  │ Methods:         │    │                       │      │  │
-│  │  │ • openDatabase   │    │ Methods:              │      │  │
-│  │  │ • executeQuery   │    │ • indexDip()          │      │  │
-│  │  │ • clearTables    │    │ • parseDipIndexXml()  │      │  │
-│  │  │ • exportDatabase │    │ • processMetadata()   │      │  │
-│  │  │ • listDatabases  │    │ • extractSubjects()   │      │  │
-│  │  └────────┬─────────┘    └────────┬───────────────┘      │  │
-│  │           │                       │                       │  │
-│  │           ▼                       ▼                       │  │
-│  │  ┌────────────────────────────────────────────┐          │  │
-│  │  │         SQLite Database (Native)           │          │  │
-│  │  │  ~/.config/dip-reader/databases/           │          │  │
-│  │  │                                            │          │  │
-│  │  │  Tables:                                   │          │  │
-│  │  │    • archival_process                      │          │  │
-│  │  │    • document_class                        │          │  │
-│  │  │    • aip                                   │          │  │
-│  │  │    • document                              │          │  │
-│  │  │    • file                                  │          │  │
-│  │  │    • metadata                              │          │  │
-│  │  │    • subject_*  (pf, pg, pai, pae, as, sq) │          │  │
-│  │  │    • administrative_procedure              │          │  │
-│  │  │    • phase                                 │          │  │
-│  │  │    • document_aggregation                  │          │  │
-│  │  │    • document_subject_association          │          │  │
-│  │  └────────────────────────────────────────────┘          │  │
-│  │                                                           │  │
-│  │  ┌────────────────────────────────────────────┐          │  │
-│  │  │           ai-search.js                     │          │  │
-│  │  ├────────────────────────────────────────────┤          │  │
-│  │  │ @xenova/transformers                      │          │  │
-│  │  │ Model: all-MiniLM-L6-v2 (quantized)       │          │  │
-│  │  │                                            │          │  │
-│  │  │ In-Memory Vector Cache:                   │          │  │
-│  │  │   Map<documentId, Float32Array>           │          │  │
-│  │  │                                            │          │  │
-│  │  │ Methods:                                   │          │  │
-│  │  │ • initialize()          - Load AI model   │          │  │
-│  │  │ • indexDocument()       - Embed text      │          │  │
-│  │  │ • search()              - Find similar    │          │  │
-│  │  │ • reindexAll()          - Rebuild index   │          │  │
-│  │  │ • generateEmbedding()   - Get vector      │          │  │
-│  │  │ • cosineSimilarity()    - Compare docs    │          │  │
-│  │  └────────────────────────────────────────────┘          │  │
-│  │                                                           │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+│  │  ┌────────────────────────────────────────────────────┐    │  │
+│  │  │              IPC Handler Registry                  │    │  │
+│  │  │                                                    │    │  │
+│  │  │  Database Handlers (14):                           │    │  │
+│  │  │    • db:init         • db:open      • db:index     │    │  │
+│  │  │    • db:query        • db:list      • db:delete    │    │  │
+│  │  │    • db:export       • db:info                     │    │  │
+│  │  │    • dip:select-directory • file:read              │    │  │
+│  │  │                                                    │    │  │
+│  │  │  AI Handlers (7):                                  │    │  │
+│  │  │    • ai:init         • ai:index                    │    │  │
+│  │  │    • ai:search       • ai:reindex-all              │    │  │
+│  │  │    • ai:generate-embedding                         │    │  │
+│  │  │    • ai:state        • ai:clear                    │    │  │
+│  │  └──────────┬────────────────────────┬────────────────┘    │  │
+│  │             │                        │                     │  │
+│  │             ▼                        ▼                     │  │
+│  │  ┌──────────────────┐    ┌────────────────────────┐        │  │
+│  │  │  db-handler.js   │    │   indexer-main.js      │        │  │
+│  │  ├──────────────────┤    ├────────────────────────┤        │  │
+│  │  │ better-sqlite3   │    │ XML Parsing (xmldom)   │        │  │
+│  │  │                  │    │ File System (fs)       │        │  │
+│  │  │ Methods:         │    │                        │        │  │
+│  │  │ • openDatabase   │    │ Methods:               │        │  │
+│  │  │ • executeQuery   │    │ • indexDip()           │        │  │
+│  │  │ • clearTables    │    │ • parseDipIndexXml()   │        │  │
+│  │  │ • exportDatabase │    │ • processMetadata()    │        │  │
+│  │  │ • listDatabases  │    │ • extractSubjects()    │        │  │
+│  │  └────────┬─────────┘    └────────┬───────────────┘        │  │
+│  │           │                       │                        │  │
+│  │           ▼                       ▼                        │  │
+│  │  ┌─────────────────────────────────────────────┐           │  │
+│  │  │         SQLite Database (Native)            │           │  │
+│  │  │  ~/.config/dip-reader/databases/            │           │  │
+│  │  │                                             │           │  │
+│  │  │  Tables:                                    │           │  │
+│  │  │    • archival_process                       │           │  │
+│  │  │    • document_class                         │           │  │
+│  │  │    • aip                                    │           │  │
+│  │  │    • document                               │           │  │
+│  │  │    • file                                   │           │  │
+│  │  │    • metadata                               │           │  │
+│  │  │    • subject_*  (pf, pg, pai, pae, as, sq)  │           │  │
+│  │  │    • administrative_procedure               │           │  │
+│  │  │    • phase                                  │           │  │
+│  │  │    • document_aggregation                   │           │  │
+│  │  │    • document_subject_association           │           │  │
+│  │  └─────────────────────────────────────────────┘           │  │
+│  │                                                            │  │
+│  │  ┌─────────────────────────────────────────────┐           │  │
+│  │  │           ai-search.js                      │           │  │
+│  │  ├─────────────────────────────────────────────┤           │  │
+│  │  │ @xenova/transformers                        │           │  │
+│  │  │ Model: all-MiniLM-L6-v2 (quantized)         │           │  │
+│  │  │                                             │           │  │
+│  │  │ In-Memory Vector Cache:                     │           │  │
+│  │  │   Map<documentId, Float32Array>             │           │  │
+│  │  │                                             │           │  │
+│  │  │ Methods:                                    │           │  │
+│  │  │ • initialize()          - Load AI model     │           │  │
+│  │  │ • indexDocument()       - Embed text        │           │  │
+│  │  │ • search()              - Find similar      │           │  │
+│  │  │ • reindexAll()          - Rebuild index     │           │  │
+│  │  │ • generateEmbedding()   - Get vector        │           │  │
+│  │  │ • cosineSimilarity()    - Compare docs      │           │  │
+│  │  └─────────────────────────────────────────────┘           │  │
+│  │                                                            │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---

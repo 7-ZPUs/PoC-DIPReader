@@ -16,7 +16,7 @@ class IndexerMain {
   async readDipIndex() {
     try {
       const entries = fs.readdirSync(this.dipRootPath, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         if (entry.isFile() && entry.name.includes('DiPIndex')) {
           const filePath = path.join(this.dipRootPath, entry.name);
@@ -46,36 +46,16 @@ class IndexerMain {
 
     try {
       // Extract archival process UUID - try different XML structures
-      let processUUID = '';
-      
-      // Try PackageInfo/ProcessUUID first (newer format)
-      const packageInfo = xmlDoc.getElementsByTagName('PackageInfo')[0];
-      if (packageInfo) {
-        const processUUIDElement = packageInfo.getElementsByTagName('ProcessUUID')[0];
-        processUUID = processUUIDElement?.textContent || '';
+      const processUUIDs = Array.from(xmlDoc.getElementsByTagName('AiP')).map(aip => aip.getAttribute('uuid')).filter(uuid => uuid);
+
+      for (const processUUID of processUUIDs) {
+        await this.insertArchivalProcess(processUUID);
       }
-      
-      // Fallback to ArchivalProcess attribute (older format)
-      if (!processUUID) {
-        const processElement = xmlDoc.getElementsByTagName('ArchivalProcess')[0];
-        if (processElement) {
-          processUUID = processElement.getAttribute('uuid') || '';
-        }
-      }
-      
-      // If still no UUID, generate one from the root element or use a default
-      if (!processUUID) {
-        const rootElement = xmlDoc.documentElement;
-        processUUID = rootElement.getAttribute('uuid') || 'default-process';
-        console.warn('[Indexer] No ProcessUUID found, using:', processUUID);
-      }
-      
-      await this.insertArchivalProcess(processUUID);
 
       // Process all DocumentClass elements
       const documentClasses = xmlDoc.getElementsByTagName('DocumentClass');
       for (let i = 0; i < documentClasses.length; i++) {
-        await this.processDocumentClass(documentClasses[i], processUUID);
+        await this.processDocumentClass(documentClasses[i]);
       }
     } catch (error) {
       console.error('[Indexer] Error parsing DIP index XML:', error);
@@ -90,17 +70,17 @@ class IndexerMain {
     this.db.exec(sql, [uuid]);
   }
 
-  processDocumentClass(docClassElement, processUUID) {
+  processDocumentClass(docClassElement) {
     if (!this.db) throw new Error('Database not initialized');
 
     const className = docClassElement.getAttribute('name') || '';
 
     console.log("Processing DocumentClass:", className);
-    
+
     // Check if class already exists first
     const checkSql = `SELECT id FROM document_class WHERE class_name = ?`;
     let result = this.db.executeQuery(checkSql, [className]);
-    
+
     let documentClassId;
     if (result.length > 0) {
       documentClassId = result[0].id;
@@ -108,7 +88,7 @@ class IndexerMain {
       // Insert only if it doesn't exist
       const insertClassSql = `INSERT INTO document_class (class_name) VALUES (?)`;
       this.db.exec(insertClassSql, [className]);
-      
+
       result = this.db.executeQuery(checkSql, [className]);
       documentClassId = result.length > 0 ? result[0].id : 0;
     }
@@ -120,13 +100,13 @@ class IndexerMain {
     // Process all AiP elements
     const aips = docClassElement.getElementsByTagName('AiP');
     for (let i = 0; i < aips.length; i++) {
-      this.processAiP(aips[i], documentClassId, processUUID);
+      this.processAiP(aips[i], documentClassId);
     }
 
     return documentClassId;
   }
 
-  processAiP(aipElement, documentClassId, processUUID) {
+  processAiP(aipElement, documentClassId) {
     if (!this.db) throw new Error('Database not initialized');
 
     const aipUUID = aipElement.getAttribute('uuid') || '';
@@ -134,7 +114,7 @@ class IndexerMain {
 
     // Insert AiP
     const insertAipSql = `INSERT OR IGNORE INTO aip (uuid, document_class_id, archival_process_uuid, root_path) VALUES (?, ?, ?, ?)`;
-    this.db.exec(insertAipSql, [aipUUID, documentClassId, processUUID, aipRoot]);
+    this.db.exec(insertAipSql, [aipUUID, documentClassId, aipUUID, aipRoot]);
 
     // Clean aipRoot path (remove leading ./)
     const cleanAipRoot = aipRoot.replace(/^\.\//, '');
@@ -166,26 +146,23 @@ class IndexerMain {
       return;
     }
 
-    // Clean and build the full path for files
+    // Build the document folder path
     const cleanDocPath = docPath.replace(/^\.\//, '');
-    const fullPath = currentPath ? `${currentPath}/${cleanDocPath}` : cleanDocPath;
+    const documentFolderPath = path.join(currentPath, cleanDocPath);
 
     // Process Files
     const filesElement = docElement.getElementsByTagName('Files')[0];
     if (filesElement) {
-      this.processFiles(filesElement, documentId, docUUID, fullPath);
+      this.processFiles(filesElement, documentId, documentFolderPath);
     }
   }
 
-  processFiles(filesElement, documentId, docUUID, currentPath) {
+  processFiles(filesElement, documentId, currentPath) {
     if (!this.db) throw new Error('Database not initialized');
 
-    // Process Metadata file
+    // Process Metadata file (extract metadata but don't index the file itself)
     const metadata = filesElement.getElementsByTagName('Metadata')[0];
     const metadataPath = (metadata?.textContent || '').trim();
-    if (metadata && metadataPath) {
-      this.insertFile(currentPath, metadataPath, false, documentId);
-    }
 
     // Process Primary file
     const primary = filesElement.getElementsByTagName('Primary')[0];
@@ -201,6 +178,7 @@ class IndexerMain {
       this.insertFile(currentPath, attachmentPath, false, documentId);
     }
 
+    // Process metadata XML file to extract document properties
     if (metadataPath) {
       this.processMetadataFile(`${currentPath}/${metadataPath.replace(/^\.\//, '')}`, documentId);
     }
@@ -228,11 +206,13 @@ class IndexerMain {
     }
 
     const fullPath = path.join(this.dipRootPath, cleaned);
-    
+
     // Check if file exists
     if (fs.existsSync(fullPath)) {
       return fullPath;
     }
+
+    console.log(`File not found at expected path: ${fullPath}`);
 
     // Try case-insensitive search
     const parts = cleaned.split('/');
@@ -241,7 +221,7 @@ class IndexerMain {
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       const entries = fs.readdirSync(currentPath, { withFileTypes: true });
-      
+
       let found = false;
       for (const entry of entries) {
         if (entry.name.toLowerCase() === part.toLowerCase()) {
@@ -263,7 +243,7 @@ class IndexerMain {
   processMetadataFile(relativePath, documentId) {
     console.log('Attempting to access metadata at:', relativePath);
     const filePath = this.getFilePath(relativePath);
-    
+
     if (!filePath) {
       console.warn('Metadata file not found:', relativePath);
       return;
@@ -315,45 +295,71 @@ class IndexerMain {
     const Note = xmlDoc.getElementsByTagName('Note')[0];
     this.insertMetadata('Note', Note?.textContent || '', documentId, 'string');
 
-    let Impronta = null;
-    const documentoInformatico = xmlDoc.getElementsByTagName('DocumentoInformatico')[0];
-    if (documentoInformatico) {
-      Impronta = documentoInformatico.getElementsByTagName('Impronta')[0];
+    // Extract DatiDiRegistrazione
+    const datiReg = xmlDoc.getElementsByTagName('DatiDiRegistrazione')[0];
+    if (datiReg) {
+      this.insertMetadata('TipologiaDiFlusso', datiReg.getElementsByTagName('TipologiaDiFlusso')[0]?.textContent || '', documentId, 'string');
+      const repertorio = datiReg.getElementsByTagName('Repertorio_Registro')[0];
+      if (repertorio) {
+        this.insertMetadata('TipoRegistro', repertorio.getElementsByTagName('TipoRegistro')[0]?.textContent || '', documentId, 'string');
+        this.insertMetadata('DataRegistrazioneDocumento', repertorio.getElementsByTagName('DataRegistrazioneDocumento')[0]?.textContent || '', documentId, 'date');
+        this.insertMetadata('NumeroRegistrazioneDocumento', repertorio.getElementsByTagName('NumeroRegistrazioneDocumento')[0]?.textContent || '', documentId, 'string');
+        this.insertMetadata('CodiceRegistro', repertorio.getElementsByTagName('CodiceRegistro')[0]?.textContent || '', documentId, 'string');
+      }
     }
-    this.insertMetadata('Impronta', Impronta?.textContent || '', documentId, 'string');
+
+    // Process Impronte (hash) per file - main document + attachments
+    this.processImpronte(xmlDoc, documentId);
 
     // Additional generic metadata
     this.extractOptionalMetadata(xmlDoc, documentId, 'DataFattura', 'string');
     this.extractOptionalMetadata(xmlDoc, documentId, 'NumeroFattura', 'string');
     this.extractOptionalMetadata(xmlDoc, documentId, 'CodiceFiscale', 'string');
     this.extractOptionalMetadata(xmlDoc, documentId, 'Nome', 'string');
-    
-    const Version = xmlDoc.getElementsByTagName('Version')[0] || 
-                    xmlDoc.getElementsByTagName('VersioneDelDocumento')[0];
+
+    const Version = xmlDoc.getElementsByTagName('Version')[0] ||
+      xmlDoc.getElementsByTagName('VersioneDelDocumento')[0];
     if (Version) {
       this.insertMetadata('Version', Version.textContent || '', documentId, 'string');
     }
-
-    this.extractOptionalMetadata(xmlDoc, documentId, 'TipoRuolo', 'string');
-    this.extractOptionalMetadata(xmlDoc, documentId, 'CategoriaProdotto', 'string');
     
+    this.extractOptionalMetadata(xmlDoc, documentId, 'CategoriaProdotto', 'string');
+
     const IdAggregazione = xmlDoc.getElementsByTagName('IdAggregazione')[0] ||
-                          xmlDoc.getElementsByTagName('IdAgg')[0];
+      xmlDoc.getElementsByTagName('IdAgg')[0];
     if (IdAggregazione) {
       this.insertMetadata('IdAggregazione', IdAggregazione.textContent || '', documentId, 'string');
     }
 
     const ProdottoSoftware = xmlDoc.getElementsByTagName('ProdottoSoftware')[0];
     if (ProdottoSoftware) {
-      const prodotto = ProdottoSoftware.getElementsByTagName('Prodotto')[0];
-      this.insertMetadata('ProdottoSoftware', prodotto?.textContent || '', documentId, 'string');
+      const nomeProdotto = ProdottoSoftware.getElementsByTagName('NomeProdotto')[0]?.textContent ||
+        ProdottoSoftware.getElementsByTagName('Prodotto')[0]?.textContent || '';
+      const versioneProdotto = ProdottoSoftware.getElementsByTagName('VersioneProdotto')[0]?.textContent || '';
+      const produttore = ProdottoSoftware.getElementsByTagName('Produttore')[0]?.textContent || '';
+
+      this.insertMetadata('NomeProdotto', nomeProdotto, documentId, 'string');
+      this.insertMetadata('VersioneProdotto', versioneProdotto, documentId, 'string');
+      this.insertMetadata('Produttore', produttore, documentId, 'string');
     }
 
-    const Produttore = xmlDoc.getElementsByTagName('Produttore')[0];
-    if (Produttore) {
-      const nome = Produttore.getElementsByTagName('Nome')[0];
-      this.insertMetadata('Produttore', nome?.textContent || '', documentId, 'string');
+    // Extract Formato
+    const formato = xmlDoc.getElementsByTagName('Formato')[0];
+    this.insertMetadata('Formato', formato?.textContent || '', documentId, 'string');
+
+    // Extract verification fields
+    const verifica = xmlDoc.getElementsByTagName('Verifica')[0];
+    if (verifica) {
+      this.insertMetadata('FirmatoDigitalmente', verifica.getElementsByTagName('FirmatoDigitalmente')[0]?.textContent || '', documentId, 'string');
+      this.insertMetadata('MarcaturaTemporale', verifica.getElementsByTagName('MarcaturaTemporale')[0]?.textContent || '', documentId, 'string');
     }
+
+    // Extract document-level fields
+    this.extractOptionalMetadata(xmlDoc, documentId, 'ModalitaDiFormazione', 'string');
+    this.extractOptionalMetadata(xmlDoc, documentId, 'TipologiaDocumentale', 'string');
+    this.extractOptionalMetadata(xmlDoc, documentId, 'NomeDelDocumento', 'string');
+    this.extractOptionalMetadata(xmlDoc, documentId, 'Riservato', 'string');
+    this.extractOptionalMetadata(xmlDoc, documentId, 'ModalitaPagamento', 'string');
 
     // Process Soggetti (Subjects)
     this.processSoggetti(xmlDoc, documentId);
@@ -364,14 +370,19 @@ class IndexerMain {
     console.log('Metadata processed for document ID:', documentId);
   }
 
-  insertMetadata(key, value, documentId, metaType = 'string') {
+  insertMetadata(key, value, documentId, metaType = 'string', fileId = null) {
     if (!this.db) return;
-    
+
     // Don't insert empty/null values
     if (!value || value.trim() === '') return;
-    
-    const query = 'INSERT OR IGNORE INTO metadata(meta_key, meta_value, document_id, meta_type) VALUES (?, ?, ?, ?)';
-    this.db.exec(query, [key, value, documentId, metaType]);
+
+    if (fileId) {
+      const query = 'INSERT OR IGNORE INTO metadata(meta_key, meta_value, document_id, file_id, meta_type) VALUES (?, ?, ?, ?, ?)';
+      this.db.exec(query, [key, value, documentId, fileId, metaType]);
+    } else {
+      const query = 'INSERT OR IGNORE INTO metadata(meta_key, meta_value, document_id, meta_type) VALUES (?, ?, ?, ?)';
+      this.db.exec(query, [key, value, documentId, metaType]);
+    }
   }
 
   extractOptionalMetadata(xmlDoc, documentId, tagName, metaType = 'string') {
@@ -381,12 +392,108 @@ class IndexerMain {
     }
   }
 
+  /**
+   * Extract Impronta (hash) for ALL files: main document + each attachment.
+   * Maps UUID → Impronta from DocumentoInformatico/Allegati, then UUID → file path
+   * from ArchimemoData, and finally looks up file_id in the database.
+   */
+  processImpronte(xmlDoc, documentId) {
+    if (!this.db) return;
+
+    const improntaMap = new Map(); // UUID → { impronta, algoritmo }
+
+    const documentoInformatico = xmlDoc.getElementsByTagName('DocumentoInformatico')[0];
+    if (!documentoInformatico) return;
+
+    // 1. Main document's Impronta from DocumentoInformatico > IdDoc
+    const mainIdDoc = documentoInformatico.getElementsByTagName('IdDoc')[0];
+    if (mainIdDoc) {
+      const improntaCripto = mainIdDoc.getElementsByTagName('ImprontaCrittograficaDelDocumento')[0];
+      if (improntaCripto) {
+        const impronta = improntaCripto.getElementsByTagName('Impronta')[0]?.textContent || '';
+        const algoritmo = improntaCripto.getElementsByTagName('Algoritmo')[0]?.textContent || '';
+        const identificativo = mainIdDoc.getElementsByTagName('Identificativo')[0]?.textContent || '';
+        if (identificativo && impronta) {
+          improntaMap.set(identificativo, { impronta, algoritmo });
+        }
+      }
+    }
+
+    // 2. Attachment Improntas from Allegati > IndiceAllegati > IdDoc
+    const allegatiElement = documentoInformatico.getElementsByTagName('Allegati')[0];
+    if (allegatiElement) {
+      const indiceAllegati = allegatiElement.getElementsByTagName('IndiceAllegati');
+      for (let i = 0; i < indiceAllegati.length; i++) {
+        const idDoc = indiceAllegati[i].getElementsByTagName('IdDoc')[0];
+        if (idDoc) {
+          const improntaCripto = idDoc.getElementsByTagName('ImprontaCrittograficaDelDocumento')[0];
+          if (improntaCripto) {
+            const impronta = improntaCripto.getElementsByTagName('Impronta')[0]?.textContent || '';
+            const algoritmo = improntaCripto.getElementsByTagName('Algoritmo')[0]?.textContent || '';
+            const identificativo = idDoc.getElementsByTagName('Identificativo')[0]?.textContent || '';
+            if (identificativo && impronta) {
+              improntaMap.set(identificativo, { impronta, algoritmo });
+            }
+          }
+        }
+      }
+    }
+
+    console.log(`[Indexer] Found ${improntaMap.size} Impronte (main + attachments)`);
+
+    // 3. Map UUID → file path from ArchimemoData, then look up file_id
+    const archimemoData = xmlDoc.getElementsByTagName('ArchimemoData')[0];
+    if (archimemoData) {
+      const fileInfos = archimemoData.getElementsByTagName('FileInformation');
+      for (let i = 0; i < fileInfos.length; i++) {
+        const fileUUID = fileInfos[i].getElementsByTagName('FileUUID')[0]?.textContent || '';
+        const fileLocalName = fileInfos[i].getElementsByTagName('FileLocalName')[0]?.textContent || '';
+
+        if (!fileUUID || !fileLocalName) continue;
+
+        const improntaData = improntaMap.get(fileUUID);
+        if (!improntaData) continue;
+
+        // Try to find the file in the database by relative_path
+        let fileId = null;
+        const candidates = [fileLocalName, fileLocalName.replace(/^\.\//, '')];
+        for (const candidate of candidates) {
+          const fileResult = this.db.executeQuery(
+            'SELECT id FROM file WHERE relative_path = ? AND document_id = ?',
+            [candidate, documentId]
+          );
+          if (fileResult.length > 0) {
+            fileId = fileResult[0].id;
+            break;
+          }
+        }
+
+        // Insert Impronta with file_id
+        this.insertMetadata('Impronta', improntaData.impronta, documentId, 'string', fileId);
+        if (improntaData.algoritmo) {
+          this.insertMetadata('Algoritmo', improntaData.algoritmo, documentId, 'string', fileId);
+        }
+
+        console.log(`[Indexer] Impronta stored for file UUID=${fileUUID}, file_id=${fileId}`);
+      }
+    } else {
+      // Fallback: no ArchimemoData, store just the main document's Impronta at document level
+      const firstEntry = improntaMap.values().next().value;
+      if (firstEntry) {
+        this.insertMetadata('Impronta', firstEntry.impronta, documentId, 'string');
+        if (firstEntry.algoritmo) {
+          this.insertMetadata('Algoritmo', firstEntry.algoritmo, documentId, 'string');
+        }
+      }
+    }
+  }
+
   processFasi(xmlDoc, documentId) {
     if (!this.db) return;
 
     const proceduraElement = xmlDoc.getElementsByTagName('ProceduraAmministrativa')[0] ||
-                            xmlDoc.getElementsByTagName('ProcedimentoAmministrativo')[0];
-    
+      xmlDoc.getElementsByTagName('ProcedimentoAmministrativo')[0];
+
     if (!proceduraElement) return;
 
     const catalogUri = proceduraElement.getElementsByTagName('CatalogoURI')[0]?.textContent || '';
@@ -434,12 +541,12 @@ class IndexerMain {
   insertFase(faseElement, procedureId) {
     if (!this.db) return;
 
-    const tipo = faseElement.getElementsByTagName('TipoFase')[0]?.textContent || 
-                faseElement.getElementsByTagName('Tipo')[0]?.textContent || '';
-    const dataInizio = faseElement.getElementsByTagName('DataInizio')[0]?.textContent || 
-                      faseElement.getElementsByTagName('DataApertura')[0]?.textContent || '';
-    const dataFine = faseElement.getElementsByTagName('DataFine')[0]?.textContent || 
-                    faseElement.getElementsByTagName('DataChiusura')[0]?.textContent || null;
+    const tipo = faseElement.getElementsByTagName('TipoFase')[0]?.textContent ||
+      faseElement.getElementsByTagName('Tipo')[0]?.textContent || '';
+    const dataInizio = faseElement.getElementsByTagName('DataInizio')[0]?.textContent ||
+      faseElement.getElementsByTagName('DataApertura')[0]?.textContent || '';
+    const dataFine = faseElement.getElementsByTagName('DataFine')[0]?.textContent ||
+      faseElement.getElementsByTagName('DataChiusura')[0]?.textContent || null;
 
     if (tipo && dataInizio) {
       this.db.exec(
@@ -461,8 +568,8 @@ class IndexerMain {
       const tipoRuolo = ruolo.getElementsByTagName('TipoRuolo')[0]?.textContent || '';
 
       const soggettoElements = [
-        ruolo.getElementsByTagName('PersonaFisica')[0],
-        ruolo.getElementsByTagName('PersonaGiuridica')[0],
+        ruolo.getElementsByTagName('PersonaFisica')[0] || ruolo.getElementsByTagName('PF')[0],
+        ruolo.getElementsByTagName('PersonaGiuridica')[0] || ruolo.getElementsByTagName('PG')[0],
         ruolo.getElementsByTagName('PAI')[0],
         ruolo.getElementsByTagName('PAE')[0],
         ruolo.getElementsByTagName('AS')[0],
@@ -485,7 +592,7 @@ class IndexerMain {
     if (!this.db) return null;
 
     const tagName = soggettoElement.tagName;
-    
+
     this.db.exec('INSERT INTO subject DEFAULT VALUES');
     const result = this.db.executeQuery('SELECT last_insert_rowid() as id');
     const subjectId = result.length > 0 ? result[0].id : 0;
@@ -494,9 +601,11 @@ class IndexerMain {
 
     switch (tagName) {
       case 'PersonaFisica':
+      case 'PF':
         this.insertSubjectPF(soggettoElement, subjectId);
         break;
       case 'PersonaGiuridica':
+      case 'PG':
         this.insertSubjectPG(soggettoElement, subjectId);
         break;
       case 'PAI':
@@ -536,9 +645,12 @@ class IndexerMain {
   insertSubjectPG(element, subjectId) {
     if (!this.db) return;
 
-    const denominazione = element.getElementsByTagName('Denominazione')[0]?.textContent || '';
-    const piva = element.getElementsByTagName('PartitaIVA')[0]?.textContent || '';
-    const ufficio = element.getElementsByTagName('Ufficio')[0]?.textContent || '';
+    const denominazione = element.getElementsByTagName('DenominazioneOrganizzazione')[0]?.textContent ||
+      element.getElementsByTagName('Denominazione')[0]?.textContent || '';
+    const piva = element.getElementsByTagName('CodiceFiscale_PartitaIva')[0]?.textContent ||
+      element.getElementsByTagName('PartitaIVA')[0]?.textContent || '';
+    const ufficio = element.getElementsByTagName('DenominazioneUfficio')[0]?.textContent ||
+      element.getElementsByTagName('Ufficio')[0]?.textContent || '';
     const indirizziTelematici = this.extractDigitalAddresses(element);
 
     this.db.exec(
@@ -597,8 +709,8 @@ class IndexerMain {
   insertSubjectSQ(element, subjectId) {
     if (!this.db) return;
 
-    const nomeSistema = element.getElementsByTagName('NomeSistema')[0]?.textContent || 
-                       element.getElementsByTagName('Descrizione')[0]?.textContent || '';
+    const nomeSistema = element.getElementsByTagName('NomeSistema')[0]?.textContent ||
+      element.getElementsByTagName('Descrizione')[0]?.textContent || '';
 
     this.db.exec(
       `INSERT OR IGNORE INTO subject_sq (subject_id, system_name) 
@@ -608,18 +720,26 @@ class IndexerMain {
   }
 
   extractDigitalAddresses(element) {
-    const indirizziElement = element.getElementsByTagName('IndirizziTelematici')[0];
-    if (!indirizziElement) return '';
-
     const addresses = [];
-    const emails = indirizziElement.getElementsByTagName('Email');
-    const pecs = indirizziElement.getElementsByTagName('PEC');
 
-    for (let i = 0; i < emails.length; i++) {
-      addresses.push(emails[i].textContent);
+    // Try structured format: IndirizziTelematici > Email | PEC
+    const indirizziElement = element.getElementsByTagName('IndirizziTelematici')[0];
+    if (indirizziElement) {
+      const emails = indirizziElement.getElementsByTagName('Email');
+      const pecs = indirizziElement.getElementsByTagName('PEC');
+      for (let i = 0; i < emails.length; i++) {
+        addresses.push(emails[i].textContent);
+      }
+      for (let i = 0; i < pecs.length; i++) {
+        addresses.push(pecs[i].textContent);
+      }
     }
-    for (let i = 0; i < pecs.length; i++) {
-      addresses.push(pecs[i].textContent);
+
+    // Try flat format: IndirizziDigitaliDiRiferimento (single tag with text)
+    const indirizziDigitali = element.getElementsByTagName('IndirizziDigitaliDiRiferimento');
+    for (let i = 0; i < indirizziDigitali.length; i++) {
+      const addr = (indirizziDigitali[i].textContent || '').trim();
+      if (addr) addresses.push(addr);
     }
 
     return addresses.join(', ');

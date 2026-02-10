@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<Document xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="DocumentMetadata.xsd">
+    <DocumentoInformatico>
+        <IdDoc>
+            <ImprontaCrittograficaDelDocumento>
+                <Impronta>O6XdF8Z7apXwMjnKOrXvuiEnpVodj11kLK2aKQpjA9U=</Impronta>
+                <Algoritmo>SHA-256</Algoritmo>
+            </ImprontaCrittograficaDelDocumento>
+            <Identificativo>1cf35d1e-1b50-46c6-b6b2-f323435bf2ab</Identificativo>
+        </IdDoc>
+        <ModalitaDiFormazione>acquisizione di un documento informatico per via telematica o su supporto informatico, acquisizione della copia per immagine su supporto informatico di un documento analogico, acquisizione della copia informatica di un documento analogico</ModalitaDiFormazione>
+        <TipologiaDocumentale>Fatture</TipologiaDocumentale>
+        <DatiDiRegistrazione>
+            <TipologiaDiFlusso>U</TipologiaDiFlusso>
+            <TipoRegistro>
+                <Repertorio_Registro>
+                    <TipoRegistro>Repertorio\Registro</TipoRegistro>
+                    <DataRegistrazioneDocumento>2024-11-24</DataRegistrazioneDocumento>
+                    <NumeroRegistrazioneDocumento>123456</NumeroRegistrazioneDocumento>
+                    <CodiceRegistro>QAWSEDR13579</CodiceRegistro>
+                </Repertorio_Registro>
+            </TipoRegistro>
+        </DatiDiRegistrazione>
+        <Soggetti>
+            <Ruolo>
+                <SoggettoCheEffettuaLaRegistrazione>
+                    <TipoRuolo>Soggetto Che Effettua La Registrazione</TipoRuolo>
+                    <PF>
+                        <Cognome>Carletti</Cognome>
+                        <Nome>Francesco</Nome>
+                        <CodiceFiscale>CRLFNC40A10A010Q</CodiceFiscale>
+                        <IndirizziDigitaliDiRiferimento>ufficiovendite@pec.it</IndirizziDigitaliDiRiferimento>
+                    </PF>
+                </SoggettoCheEffettuaLaRegistrazione>
+            </Ruolo>
+            <Ruolo>
+                <Destinatario>
+                    <TipoRuolo>Destinatario</TipoRuolo>
+                    <PG>
+                        <DenominazioneOrganizzazione>Beta S.R.L</DenominazioneOrganizzazione>
+                        <CodiceFiscale_PartitaIva>57706410339</CodiceFiscale_PartitaIva>
+                        <DenominazioneUfficio>Ufficio Acquisti</DenominazioneUfficio>
+                    </PG>
+                </Destinatario>
+            </Ruolo>
+            <Ruolo>
+                <Mittente>
+                    <TipoRuolo>Mittente</TipoRuolo>
+                    <PG>
+                        <DenominazioneOrganizzazione>Ark SRL</DenominazioneOrganizzazione>
+                        <CodiceFiscale_PartitaIva>00000000046</CodiceFiscale_PartitaIva>
+                        <DenominazioneUfficio>Ufficio Acquisti</DenominazioneUfficio>
+                        <IndirizziDigitaliDiRiferimento>test@mail.com</IndirizziDigitaliDiRiferimento>
+                    </PG>
+                </Mittente>
+            </Ruolo>
+        </Soggetti>
+        <ChiaveDescrittiva>
+            <Oggetto>Cliente</Oggetto>
+            <ParoleChiave>Parola1</ParoleChiave>
+            <ParoleChiave>parola2</ParoleChiave>
+            <ParoleChiave>Parola3</ParoleChiave>
+            <ParoleChiave>Parola4</ParoleChiave>
+            <ParoleChiave>Parola5</ParoleChiave>
+        </ChiaveDescrittiva>
+        <Allegati>
+            <NumeroAllegati>7</NumeroAllegati>
+            <IndiceAllegati>
+                <IdDoc>
+                    <ImprontaCrittograficaDelDocumento>
+                        <Impronta>mKDYGDMnodBhw8oLcNqQFIAk03vTcpwHupHvTdWlzUo=</Impronta>
+                        <Algoritmo>SHA-256</Algoritmo>
+                    </ImprontaCrittograficaDelDocumento>
+                    <Identificativo>0de836d1-7d33-41e2-833e-97706a1e1f45</Identificativo>
+                </IdDoc>
+                <Descrizione>Descrizione allegato 1</Descrizione>
+            </IndiceAllegati>
+            <IndiceAllegati>
+                <IdDoc>
+                    <ImprontaCrittograficaDelDocumento>
+                        <Impronta>jC8YGoR4ZMJ5RVDJa/nYgUSTD0sxZRxqCirRezECOTE=</Impronta>
+                        <Algoritmo>SHA-256</Algoritmo>
+                    </ImprontaCrittograficaDelDocumento>
+                    <Identificativo>94029188-2260-4bcd-a2eb-024a9aa0724d</Identificativo>
+                </IdDoc>
+                <Descrizione>Descrizione allegato 2</Descrizione>
+            </IndiceAllegati>
+            <IndiceAllegati>
+                <IdDoc>
+                    <ImprontaCrittograficaDelDocumento>
+                        <Impronta>IpgjsrfIYDALz3LykS6bWwH5KBoLYWdvU5Kf8z2R308=</Impronta>
+                        <Algoritmo>SHA-256</Algoritmo>
+                    </ImprontaCrittograficaDelDocumento>
+                    <Identificativo>e2210661-df78-4cb6-a3de-4c041f755360</Identificativo>
+                </IdDoc>
+                <Descrizione>Descrizione allegato 3</Descrizione>
+            </IndiceAllegati>
+            <IndiceAllegati>
+                <IdDoc>
+                    <ImprontaCrittograficaDelDocumento>
+                        <Impronta>QT0UndCEEZGMYn8jyyno6JtCUa+vH3S2D5FrC/ewvRM=</Impronta>
+                        <Algoritmo>SHA-256</Algoritmo>
+                    </ImprontaCrittograficaDelDocumento>
+                    <Identificativo>7f09cc64-17db-4f9a-80f0-2793bea18688</Identificativo>
+                </IdDoc>
+                <Descrizione>Descrizione allegato 4</Descrizione>
+            </IndiceAllegati>
+            <IndiceAllegati>
+                <IdDoc>
+                    <ImprontaCrittograficaDelDocumento>
+                        <Impronta>THsRpBR1QbIE5BcsvXhW4Wwjk2xFM9IJimmdwMrMUKU=</Impronta>
+                        <Algoritmo>SHA-256</Algoritmo>
+                    </ImprontaCrittograficaDelDocumento>
+                    <Identificativo>c3e7250c-0a51-4cf0-bb35-33d61c6de104</Identificativo>
+                </IdDoc>
+                <Descrizione>Descrizione allegato 5</Descrizione>
+            </IndiceAllegati>
+            <IndiceAllegati>
+                <IdDoc>
+                    <ImprontaCrittograficaDelDocumento>
+                        <Impronta>6ISjai6cnoJPLUSf6ITjFkmiQW8zOsRemN4trsqNTUg=</Impronta>
+                        <Algoritmo>SHA-256</Algoritmo>
+                    </ImprontaCrittograficaDelDocumento>
+                    <Identificativo>67ae4e9f-30e9-4c27-ad82-ffab7f2de74f</Identificativo>
+                </IdDoc>
+                <Descrizione>Descrizione allegato 6</Descrizione>
+            </IndiceAllegati>
+            <IndiceAllegati>
+                <IdDoc>
+                    <ImprontaCrittograficaDelDocumento>
+                        <Impronta>C8Bdc5/bOaDZo93XqPJX551COrp9+H2uQL/jeuNWooI=</Impronta>
+                        <Algoritmo>SHA-256</Algoritmo>
+                    </ImprontaCrittograficaDelDocumento>
+                    <Identificativo>fb481833-dc0c-4e61-97d0-27c11f50ca71</Identificativo>
+                </IdDoc>
+                <Descrizione>Descrizione allegato 7</Descrizione>
+            </IndiceAllegati>
+        </Allegati>
+        <Classificazione>
+            <IndiceDiClassificazione>15784VUYREDG</IndiceDiClassificazione>
+            <Descrizione>Descrizione indice</Descrizione>
+            <PianoDiClassificazione>Descrizione piano</PianoDiClassificazione>
+        </Classificazione>
+        <Riservato>false</Riservato>
+        <IdentificativoDelFormato>
+            <Formato>PDF</Formato>
+            <ProdottoSoftware>
+                <NomeProdotto>Adobe Acrobat</NomeProdotto>
+                <VersioneProdotto>Non Rilevabile</VersioneProdotto>
+                <Produttore>Non Rilevabile</Produttore>
+            </ProdottoSoftware>
+        </IdentificativoDelFormato>
+        <Verifica>
+            <FirmatoDigitalmente>false</FirmatoDigitalmente>
+            <SigillatoElettronicamente>false</SigillatoElettronicamente>
+            <MarcaturaTemporale>true</MarcaturaTemporale>
+            <ConformitaCopieImmagineSuSupportoInformatico>false</ConformitaCopieImmagineSuSupportoInformatico>
+        </Verifica>
+        <Agg/>
+        <NomeDelDocumento>FilePrincipaleIPDV_2.pdf</NomeDelDocumento>
+        <VersioneDelDocumento>1</VersioneDelDocumento>
+        <TempoDiConservazione>10</TempoDiConservazione>
+        <Note>Indicazioni aggiuntive utili ad indicare situazioni particolari.</Note>
+    </DocumentoInformatico>
+    <CustomMetadata cmLanguage="it" cmSchemaUri="http://archiverse.it/archimemo/v3/CustomMetadata.xsd" cmSchemaVersion="3" cmValidFrom="2025-09-02T22:00:00Z">
+        <CategoriaProdotto>Salotto</CategoriaProdotto>
+        <ModalitaPagamento>Bonifico</ModalitaPagamento>
+        <NumeroFattura>FT-2023-4567</NumeroFattura>
+        <DataFattura>2023-04-24</DataFattura>
+    </CustomMetadata>
+    <ArchimemoData adLanguage="en" adSchemaUri="http://archiverse.it/archimemo/v1/ArchimemoData.xsd" adSchemaVersion="1" adValidFrom="2025-09-02T22:00:00Z">
+        <DocumentInformation>
+            <PreservationProcessUUID>bea9a26f-dc96-4b4a-97ea-889b39847ed7</PreservationProcessUUID>
+            <PreservationProcessDate>2025-11-11</PreservationProcessDate>
+            <DocumentUUID>1cf35d1e-1b50-46c6-b6b2-f323435bf2ab</DocumentUUID>
+            <FilesCount>8</FilesCount>
+            <TotalSize unit="bytes">6148</TotalSize>
+        </DocumentInformation>
+        <FileInformation customerHasDeclaredHash="true" isPrimary="true" originalFileName="FilePrincipaleIPDV_2.pdf">
+            <FileUUID>1cf35d1e-1b50-46c6-b6b2-f323435bf2ab</FileUUID>
+            <FileLocalName>./FilePrincipaleIPDV_2.pdf</FileLocalName>
+            <FileSize unit="bytes">769</FileSize>
+        </FileInformation>
+        <FileInformation customerHasDeclaredHash="true" isPrimary="false" originalFileName="Allegato_1.pdf">
+            <FileUUID>0de836d1-7d33-41e2-833e-97706a1e1f45</FileUUID>
+            <FileLocalName>./0de836d1-7d33-41e2-833e-97706a1e1f45/Allegato_1.pdf</FileLocalName>
+            <FileSize unit="bytes">769</FileSize>
+        </FileInformation>
+        <FileInformation customerHasDeclaredHash="true" isPrimary="false" originalFileName="Allegato_2.pdf">
+            <FileUUID>94029188-2260-4bcd-a2eb-024a9aa0724d</FileUUID>
+            <FileLocalName>./94029188-2260-4bcd-a2eb-024a9aa0724d/Allegato_2.pdf</FileLocalName>
+            <FileSize unit="bytes">767</FileSize>
+        </FileInformation>
+        <FileInformation customerHasDeclaredHash="true" isPrimary="false" originalFileName="Allegato_3.pdf">
+            <FileUUID>e2210661-df78-4cb6-a3de-4c041f755360</FileUUID>
+            <FileLocalName>./e2210661-df78-4cb6-a3de-4c041f755360/Allegato_3.pdf</FileLocalName>
+            <FileSize unit="bytes">769</FileSize>
+        </FileInformation>
+        <FileInformation customerHasDeclaredHash="true" isPrimary="false" originalFileName="Allegato_4.pdf">
+            <FileUUID>7f09cc64-17db-4f9a-80f0-2793bea18688</FileUUID>
+            <FileLocalName>./7f09cc64-17db-4f9a-80f0-2793bea18688/Allegato_4.pdf</FileLocalName>
+            <FileSize unit="bytes">768</FileSize>
+        </FileInformation>
+        <FileInformation customerHasDeclaredHash="true" isPrimary="false" originalFileName="Allegato_5.pdf">
+            <FileUUID>c3e7250c-0a51-4cf0-bb35-33d61c6de104</FileUUID>
+            <FileLocalName>./c3e7250c-0a51-4cf0-bb35-33d61c6de104/Allegato_5.pdf</FileLocalName>
+            <FileSize unit="bytes">769</FileSize>
+        </FileInformation>
+        <FileInformation customerHasDeclaredHash="true" isPrimary="false" originalFileName="Allegato_6.pdf">
+            <FileUUID>67ae4e9f-30e9-4c27-ad82-ffab7f2de74f</FileUUID>
+            <FileLocalName>./67ae4e9f-30e9-4c27-ad82-ffab7f2de74f/Allegato_6.pdf</FileLocalName>
+            <FileSize unit="bytes">769</FileSize>
+        </FileInformation>
+        <FileInformation customerHasDeclaredHash="true" isPrimary="false" originalFileName="Allegato_7.pdf">
+            <FileUUID>fb481833-dc0c-4e61-97d0-27c11f50ca71</FileUUID>
+            <FileLocalName>./fb481833-dc0c-4e61-97d0-27c11f50ca71/Allegato_7.pdf</FileLocalName>
+            <FileSize unit="bytes">768</FileSize>
+        </FileInformation>
+    </ArchimemoData>
+</Document>

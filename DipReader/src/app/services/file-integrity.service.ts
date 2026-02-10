@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { DatabaseService } from '../database.service';
+import { DatabaseService } from '../database-electron.service';
 import { IntegrityCheckResult, SavedIntegrityStatus } from '../models/integrity-check';
 
 /**

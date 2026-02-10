@@ -1,6 +1,6 @@
 import { Component, Input, OnChanges, SimpleChanges, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DatabaseService } from './database.service';
+import { DatabaseService } from './database-electron.service';
 
 @Component({
   selector: 'app-metadata-viewer',

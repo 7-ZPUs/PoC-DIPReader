@@ -1,10 +1,9 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DipReaderService, FileNode } from './dip-reader.service';
+import { DatabaseService, FileNode } from './database-electron.service';
 import { MetadataViewerComponent } from './metadata-viewer.component';
 import { Filter } from './filter-manager';
-import { DatabaseService } from './database.service';
 
 import { SearchService } from './services/search.service';
 
@@ -43,10 +42,8 @@ export class AppComponent implements OnInit {
   isCalculatingVector = false;
 
   constructor(
-    private dipService: DipReaderService,
     private cdr: ChangeDetectorRef,
     private dbService: DatabaseService,
-
     private searchService: SearchService
   ) { 
     console.log('App avviata. Attendo 5 secondi prima di indicizzare per l\'AI...');
@@ -157,7 +154,7 @@ export class AppComponent implements OnInit {
     }
 
     // Recupera il percorso fisico corretto dal servizio
-    const physicalPath = await this.dipService.getPhysicalPathForFile(node.fileId);
+    const physicalPath = await this.dbService.getPhysicalPathForFile(node.fileId);
     if (physicalPath) {
       console.log(`Apertura percorso fisico: ${physicalPath}`);
       // Apre il file in una nuova scheda
@@ -174,7 +171,7 @@ export class AppComponent implements OnInit {
       return;
     }
 
-    const physicalPath = await this.dipService.getPhysicalPathForFile(node.fileId);
+    const physicalPath = await this.dbService.getPhysicalPathForFile(node.fileId);
     if (physicalPath) {
       const link = document.createElement('a');
       link.href = physicalPath;
@@ -197,7 +194,7 @@ export class AppComponent implements OnInit {
     this.integrityStatus = 'loading';
     this.integrityVerifiedAt = null;
     try {
-      const result = await this.dipService.verifyFileIntegrity(node.fileId);
+      const result = await this.dbService.verifyFileIntegrity(node.fileId);
       this.integrityStatus = result.valid ? 'valid' : 'invalid';
       this.integrityVerifiedAt = new Date().toISOString();
       this.cdr.detectChanges(); // Forza l'aggiornamento della UI prima dell'alert
@@ -231,7 +228,7 @@ export class AppComponent implements OnInit {
       console.log('Avvio indicizzazione semantica (AI)...');
       
       this.searchService.reindexAll().then(() => {
-         console.log('✅ Indicizzazione AI completata con successo.');
+         console.log('Indicizzazione AI completata con successo.');
          alert('Indicizzazione Completata! Ora puoi usare la ricerca semantica.');
       }).catch(err => {
          console.error('Errore AI:', err);

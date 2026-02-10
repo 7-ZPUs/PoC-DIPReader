@@ -1,56 +1,62 @@
 import { Injectable } from '@angular/core';
-import { DatabaseService } from '../database.service';
+import { DatabaseService } from '../database-electron.service';
 import { SearchFilter, FilterOptionGroup } from '../models/search-filter';
 
 /**
  * Servizio per la gestione della ricerca e filtri
  * Centralizza la logica di ricerca, filtri e grouping delle opzioni
+ * Utilizza Electron IPC per la ricerca semantica tramite il main process
  */
 @Injectable({ providedIn: 'root' })
 export class SearchService {
-  private worker: Worker | undefined;
-  private isWorkerReady: boolean = false;
+  private isAiReady: boolean = false;
   
   constructor(private dbService: DatabaseService) {
-    this.initWorker();
+    this.initAI();
   }
 
-  private initWorker() {
-    if (typeof Worker !== 'undefined') {
-      this.worker = new Worker(new URL('../db.worker.ts', import.meta.url));
-      
-      this.worker.onmessage = ({ data }) => {
-        if (data.type === 'INIT_RESULT') {
-          this.isWorkerReady = true;
-          console.log('✅ AI Worker: Pronto (Modello caricato in memoria)');
-        } else if (data.type === 'ERROR') {
-          console.error('❌ AI Worker Error:', data.error);
-        }
-      };
-      
-      this.worker.postMessage({ 
-        type: 'INIT', 
-        payload: { wasmUrl: 'assets/sqlite3.wasm' } 
-      });
-    } else {
-      console.error('Web Workers non supportati.');
+  private async initAI() {
+    try {
+      console.log('Initializing AI model in main process...');
+      const result = await window.electronAPI.ai.init();
+      this.isAiReady = true;
+      console.log('AI Model ready:', result);
+    } catch (error) {
+      console.error('AI initialization error:', error);
+      this.isAiReady = false;
     }
   }
 
   async searchSemantic(query: string | number[]): Promise<{id: number, score: number}[]> {
-  const response = await this.postMessageAsync('SEARCH', { query });
-  if (response.type === 'SEARCH_RESULT') {
-    return response.results;
-  }
-  return [];
-}
+    if (!this.isAiReady) {
+      console.warn('AI model not ready, skipping semantic search.');
+      return [];
+    }
 
-  indexDocument(docId: number, metadataCombinedText: string) {
-    if (this.worker) {
-      this.worker.postMessage({
-        type: 'INDEX_METADATA',
-        payload: { id: docId, text: metadataCombinedText }
-      });
+    try {
+      const response = await window.electronAPI.ai.search(query);
+      
+      if (Array.isArray(response)) {
+        return response;
+      } else if (response && Array.isArray(response.results)) {
+        return response.results;
+      }
+      
+      console.warn('Formato risposta AI imprevisto:', response);
+      return [];
+    } catch (error) {
+      console.error('Semantic search error:', error);
+      return [];
+    }
+  }
+
+  async indexDocument(docId: number, metadataCombinedText: string) {
+    if (this.isAiReady) {
+      try {
+        await window.electronAPI.ai.index({id: docId, text: metadataCombinedText});
+      } catch (error) {
+        console.error('Error indexing document:', error);
+      }
     }
   }
 
@@ -59,64 +65,31 @@ export class SearchService {
    * e inviandoli al worker per l'indicizzazione semantica
    */
   async reindexAll(): Promise<void> {
-    const worker = this.worker;
-
-    if (!worker) {
-      console.error('Service: Worker non disponibile');
-      return;
-    }
-    
-    if (!this.isWorkerReady) {
-      console.error('Service: Worker non ancora pronto');
+    if (!this.isAiReady) {
+      console.error('Service: AI model not ready');
       return;
     }
 
-    console.log('Service: Richiesta rigenerazione indici...');
+    console.log('Service: Starting reindexing...');
     
     try {
-      // 1. RECUPERA I DOCUMENTI DAL DATABASE
-      console.log('Service: Recupero documenti dal database...');
+      // 1. FETCH DOCUMENTS FROM DATABASE
+      console.log('Service: Fetching documents from database...');
       const documents = await this.fetchAllDocumentsWithMetadata();
       
       if (documents.length === 0) {
-        console.warn('Service: Nessun documento trovato da indicizzare');
+        console.warn('Service: No documents found to index');
         return;
       }
       
-      console.log(`Service: Trovati ${documents.length} documenti, invio al worker...`);
+      console.log(`Service: Found ${documents.length} documents, sending to main process...`);
       
-      // 2. INVIA I DOCUMENTI AL WORKER
-      worker.postMessage({ 
-        type: 'REINDEX_ALL',
-        payload: { documents } // ← QUESTO ERA MANCANTE!
-      });
-
-      // 3. ATTENDI IL COMPLETAMENTO
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          worker.removeEventListener('message', handler);
-          reject(new Error('Timeout reindexing (5 minuti)'));
-        }, 300000); // 5 minuti
-        
-        const handler = ({ data }: MessageEvent) => {
-          if (data.type === 'REINDEX_COMPLETE') {
-            clearTimeout(timeout);
-            worker.removeEventListener('message', handler);
-            console.log('✅ Service: Re-indicizzazione completata.');
-            resolve();
-          } else if (data.type === 'ERROR') {
-            clearTimeout(timeout);
-            worker.removeEventListener('message', handler);
-            console.error('❌ Service: Errore durante reindexing:', data.error);
-            reject(new Error(data.error.message || 'Errore sconosciuto'));
-          }
-        };
-        
-        worker.addEventListener('message', handler);
-      });
+      // 2. SEND TO MAIN PROCESS FOR INDEXING
+      const result = await window.electronAPI.ai.reindexAll(documents);
+      console.log('Service: Reindexing completed:', result);
       
     } catch (error) {
-      console.error('Service: Errore nel reindexing:', error);
+      console.error('Service: Error during reindexing:', error);
       throw error;
     }
   }
@@ -158,9 +131,9 @@ export class SearchService {
             // Recupera metadati specifici per il file o documento
             const metadata = await this.dbService.getDocumentMetadata(node.fileId);
             
-            const metadataText = metadata
-              .map(m => `${m.meta_key}: ${m.meta_value}`)
-              .join('. ');
+            const metadataText = Array.isArray(metadata)
+              ? metadata.map((m: any) => `${m.meta_key}: ${m.meta_value}`).join('. ')
+              : '';
             
             // Testo combinato per l'AI
             const combinedText = (metadataText || '') + ` File: ${node.name}`;
@@ -271,42 +244,37 @@ export class SearchService {
       .trim();
   }
 
-
-  private postMessageAsync(type: string, payload: any): Promise<any> {
-  if (!this.worker || !this.isWorkerReady) {
-    return Promise.reject(new Error('Worker AI non pronto'));
-  }
-
-  // Genera un ID univoco per questa richiesta
-  const requestId = Math.random().toString(36).substring(7);
-
-  return new Promise((resolve, reject) => {
-    const handler = ({ data }: MessageEvent) => {
-      // Controllo CRITICO: Elabora solo se l'ID corrisponde
-      if (data.requestId !== requestId) return;
-
-      this.worker?.removeEventListener('message', handler);
-
-      if (data.type === 'ERROR') {
-        reject(new Error(data.error.message));
-      } else {
-        resolve(data);
-      }
-    };
-
-    this.worker!.addEventListener('message', handler);
-    
-    // Invia il messaggio con l'ID
-    this.worker!.postMessage({ type, requestId, payload });
-  });
-}
-
   async getEmbeddingDebug(text: string): Promise<number[]> {
-  const response = await this.postMessageAsync('GENERATE_EMBEDDING', { text });
-  // Verifica il tipo di risposta
-  if (response.type === 'EMBEDDING_GENERATED') {
-    return Array.from(response.vector);
+    if (!this.isAiReady) {
+      throw new Error('AI model not ready');
+    }
+
+    try {
+      const response = await window.electronAPI.ai.generateEmbedding(text);
+      
+      if (Array.isArray(response)) {
+        return response;
+      } else if (response && response.embedding) {
+        return response.embedding;
+      }
+      
+      console.warn('Formato embedding non riconosciuto:', response);
+      return [];
+    } catch (error) {
+      console.error('Error generating embedding:', error);
+      throw error;
+    }
   }
-  throw new Error('Risposta inattesa dal worker');
-}
+
+  /**
+   * Get AI state (for debugging)
+   */
+  async getAiState(): Promise<{ initialized: boolean; indexedDocuments: number }> {
+    try {
+      return await window.electronAPI.ai.state();
+    } catch (error) {
+      console.error('Error getting AI state:', error);
+      return { initialized: false, indexedDocuments: 0 };
+    }
+  }
 }

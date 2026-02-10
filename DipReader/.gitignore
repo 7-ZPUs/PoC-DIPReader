@@ -5,6 +5,7 @@
 /tmp
 /out-tsc
 /bazel-out
+/dist-electron
 
 # Node
 /node_modules
@@ -37,6 +38,7 @@ yarn-error.log
 testem.log
 /typings
 __screenshots__/
+
 
 # System files
 .DS_Store

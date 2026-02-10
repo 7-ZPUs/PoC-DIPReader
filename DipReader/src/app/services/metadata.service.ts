@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { DatabaseService } from '../database.service';
+import { DatabaseService } from '../database-electron.service';
 
 /**
  * Gestione e manipolazione dei metadati
@@ -15,7 +15,7 @@ export class MetadataService {
       return { error: 'Metadati non trovati nel DB.' };
     }
     // Converte array in oggetto
-    return attributes.reduce((acc, attr) => ({ ...acc, [attr.key]: attr.value }), {});
+    return attributes.reduce((acc: Record<string, any>, attr: { key: string; value: string }) => ({ ...acc, [attr.key]: attr.value }), {});
   }
 
   async getMetadataValue(fileId: number, key: string): Promise<string | undefined> {

@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { DatabaseService } from '../database-electron.service';
 import { IntegrityCheckResult, SavedIntegrityStatus } from '../models/integrity-check';
+import { FileService } from './file.service';
 
 /**
  * Gestione della verifica d'integrità dei file
@@ -8,7 +9,10 @@ import { IntegrityCheckResult, SavedIntegrityStatus } from '../models/integrity-
  */
 @Injectable({ providedIn: 'root' })
 export class FileIntegrityService {
-  constructor(private dbService: DatabaseService) {}
+  constructor(
+    private dbService: DatabaseService,
+    private fileService: FileService
+  ) {}
 
   /**
    * Verifica l'integrità completa di un file:
@@ -19,7 +23,7 @@ export class FileIntegrityService {
    */
   async verifyFileIntegrity(fileId: number): Promise<IntegrityCheckResult> {
     // Get file path
-    const filePath = await this.dbService.getPhysicalPathForFile(fileId);
+    const filePath = await this.fileService.getPhysicalPath(fileId);
     if (!filePath) {
       throw new Error('File path not found');
     }
@@ -54,7 +58,7 @@ export class FileIntegrityService {
    */
   private async getExpectedHash(fileId: number): Promise<string | null> {
     // First: look for Impronta associated with this specific file_id
-    const fileImprontaResult = await window.electronAPI.db.query(
+    const fileImprontaResult = await this.dbService.executeQuery<Array<{ meta_value: string }>>(
       `SELECT meta_value FROM metadata WHERE meta_key = 'Impronta' AND file_id = ?`,
       [fileId]
     );
@@ -64,13 +68,13 @@ export class FileIntegrityService {
     }
 
     // Fallback: look for document-level Impronta
-    const fileRow = await window.electronAPI.db.query(
+    const fileRow = await this.dbService.executeQuery<Array<{ document_id: number }>>(
       `SELECT document_id FROM file WHERE id = ?`, 
       [fileId]
     );
     
     if (fileRow?.length > 0) {
-      const docImprontaResult = await window.electronAPI.db.query(
+      const docImprontaResult = await this.dbService.executeQuery<Array<{ meta_value: string }>>(
         `SELECT meta_value FROM metadata WHERE meta_key = 'Impronta' AND document_id = ? AND file_id IS NULL`,
         [fileRow[0].document_id]
       );
@@ -111,21 +115,42 @@ export class FileIntegrityService {
     return btoa(binaryString);
   }
 
+  /**
+   * Save the verification result to database
+   */
   async saveVerificationResult(fileId: number, result: IntegrityCheckResult): Promise<void> {
-    await this.dbService.saveIntegrityStatus(
-      fileId,
-      result.isValid,
-      result.calculatedHash,
-      result.expectedHash
-    );
+    console.log(`[FileIntegrityService] Integrity check for file ${fileId}: ${result.isValid ? 'VALID' : 'INVALID'}`);
+    console.log(`Expected: ${result.expectedHash}, Calculated: ${result.calculatedHash}`);
+    
+    const query = 'INSERT INTO file_integrity (file_id, result, algorithm, date_calculated) VALUES (?, ?, ?, ?)';
+    await this.dbService.executeQuery(query, [fileId, result.isValid ? 1 : 0, 'SHA-256', new Date().toISOString()]);
   }
 
+  /**
+   * Get stored integrity status from database
+   */
   async getStoredStatus(fileId: number): Promise<SavedIntegrityStatus | null> {
-    const stored = await this.dbService.getIntegrityStatus(fileId);
-    return stored ? {
-      result: stored.isValid,
-      algorithm: stored.algorithm,
-      verifiedAt: stored.date_calculated,
-    } : null;
+    const query = `
+      SELECT result, algorithm, date_calculated
+      FROM file_integrity
+      WHERE file_id = ?
+    `;
+    const rows = await this.dbService.executeQuery<Array<{
+      result: number;
+      algorithm: string;
+      date_calculated: string;
+    }>>(query, [fileId]);
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const { result, algorithm, date_calculated } = rows[0];
+    
+    return {
+      result: result === 1,
+      algorithm,
+      verifiedAt: date_calculated,
+    };
   }
 }

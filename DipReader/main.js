@@ -1,4 +1,4 @@
-const { app, BrowserWindow, protocol, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, protocol, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const dbHandler = require('./db-handler');
@@ -237,6 +237,60 @@ ipcMain.handle('file:read', async (event, filePath) => {
     } catch (err) {
         console.error('[IPC] Error reading file:', err);
         throw err;
+    }
+});
+
+// Open file with default system application
+ipcMain.handle('file:open-external', async (event, filePath) => {
+    try {
+        if (!fs.existsSync(filePath)) {
+            throw new Error('File not found: ' + filePath);
+        }
+        
+        console.log('[IPC] Opening file with system app:', filePath);
+        const result = await shell.openPath(filePath);
+        
+        // shell.openPath returns empty string on success, or error message on failure
+        if (result) {
+            console.error('[IPC] Error opening file:', result);
+            return { success: false, error: result };
+        }
+        
+        return { success: true };
+    } catch (err) {
+        console.error('[IPC] Error opening file:', err);
+        return { success: false, error: err.message };
+    }
+});
+
+// Download file to user-selected location
+ipcMain.handle('file:download', async (event, filePath) => {
+    try {
+        if (!fs.existsSync(filePath)) {
+            throw new Error('File not found: ' + filePath);
+        }
+        
+        const fileName = path.basename(filePath);
+        
+        // Show save dialog
+        const result = await dialog.showSaveDialog({
+            title: 'Save File',
+            defaultPath: fileName,
+            buttonLabel: 'Save'
+        });
+        
+        if (result.canceled || !result.filePath) {
+            return { success: false, canceled: true };
+        }
+        
+        // Copy file to selected location
+        fs.copyFileSync(filePath, result.filePath);
+        
+        console.log('[IPC] File downloaded to:', result.filePath);
+        return { success: true, savedPath: result.filePath };
+    } catch (err) {
+        console.error('[IPC] Error downloading file:', err);
+        return { success: false, error: err.message };
     }
 });
 

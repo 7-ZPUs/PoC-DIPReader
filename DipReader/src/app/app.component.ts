@@ -7,6 +7,7 @@ import { Filter } from './filter-manager';
 
 import { SearchService } from './services/search.service';
 import { FileIntegrityService } from './services/file-integrity.service';
+import { FileService } from './services/file.service';
 
 @Component({
   selector: 'app-root',
@@ -46,7 +47,8 @@ export class AppComponent implements OnInit {
     private cdr: ChangeDetectorRef,
     private dbService: DatabaseService,
     private searchService: SearchService,
-    private fileIntegrityService: FileIntegrityService
+    private fileIntegrityService: FileIntegrityService,
+    private fileService: FileService
   ) { 
     console.log('App avviata. Attendo 5 secondi prima di indicizzare per l\'AI...');
     
@@ -66,8 +68,8 @@ export class AppComponent implements OnInit {
       return;
     }
 
-    this.availableKeys = await this.dbService.getAvailableMetadataKeys();
-    this.groupedFilterKeys = await this.dbService.getGroupedFilterKeys();
+    this.availableKeys = await this.searchService.loadAvailableFilterKeys();
+    this.groupedFilterKeys = this.searchService.groupFilterKeys(this.availableKeys);
     console.log('Filtri raggruppati caricati:', this.groupedFilterKeys.length, 'gruppi');
   }
 
@@ -170,11 +172,16 @@ export class AppComponent implements OnInit {
     }
 
     // Recupera il percorso fisico corretto dal servizio
-    const physicalPath = await this.dbService.getPhysicalPathForFile(node.fileId);
+    const physicalPath = await this.fileService.getPhysicalPath(node.fileId);
+    console.log(`Percorso fisico recuperato per fileId ${node.fileId}:`, physicalPath);
     if (physicalPath) {
       console.log(`Apertura percorso fisico: ${physicalPath}`);
-      // Apre il file in una nuova scheda
-      window.open(physicalPath, '_blank');
+      // Usa Electron shell API per aprire il file con l'applicazione predefinita
+      const result = await window.electronAPI.file.openExternal(physicalPath);
+      if (!result.success) {
+        console.error(`Errore nell'apertura del file:`, result.error);
+        alert('Impossibile aprire il file: ' + result.error);
+      }
     } else {
       console.error(`Impossibile trovare il percorso fisico per il file ID: ${node.fileId}`);
       alert('File non trovato o percorso mancante.');
@@ -187,15 +194,16 @@ export class AppComponent implements OnInit {
       return;
     }
 
-    const physicalPath = await this.dbService.getPhysicalPathForFile(node.fileId);
+    const physicalPath = await this.fileService.getPhysicalPath(node.fileId);
     if (physicalPath) {
-      const link = document.createElement('a');
-      link.href = physicalPath;
-      // L'attributo download forza il browser a scaricare il file invece di aprirlo
-      link.download = physicalPath.split('/').pop() || node.name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Usa Electron dialog per far scegliere all'utente dove salvare il file
+      const result = await window.electronAPI.file.download(physicalPath);
+      if (result.success) {
+        alert('File salvato con successo in: ' + result.savedPath);
+      } else if (!result.canceled) {
+        alert('Errore durante il salvataggio: ' + result.error);
+      }
+      // Se canceled, l'utente ha annullato - non mostrare nulla
     } else {
       alert('File non trovato o percorso mancante.');
     }

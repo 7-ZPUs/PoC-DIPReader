@@ -1,6 +1,6 @@
 import { Component, Input, OnChanges, SimpleChanges, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DatabaseService } from './database-electron.service';
+import { MetadataService } from './services/metadata.service';
 
 @Component({
   selector: 'app-metadata-viewer',
@@ -15,7 +15,7 @@ export class MetadataViewerComponent implements OnChanges {
   attributes: { key: string, value: string }[] = [];
   loading = false;
 
-  constructor(private dbService: DatabaseService, private cdr: ChangeDetectorRef) {}
+  constructor(private metadataService: MetadataService, private cdr: ChangeDetectorRef) {}
 
   async ngOnChanges(changes: SimpleChanges) {
     // Clear previous data
@@ -31,7 +31,7 @@ export class MetadataViewerComponent implements OnChanges {
         try {
           console.log('[MetadataViewer] Loading file metadata for fileId:', this.fileId);
           const fileId = this.fileId; // TypeScript type narrowing
-          this.attributes = await this.dbService.getMetadataAttributes(fileId);
+          this.attributes = await this.metadataService.getMetadataAttributes(fileId);
           console.log('[MetadataViewer] Loaded', this.attributes.length, 'attributes for file');
         } catch (err) {
           console.error('Errore recupero metadati file:', err);
@@ -46,7 +46,7 @@ export class MetadataViewerComponent implements OnChanges {
         try {
           console.log('[MetadataViewer] Loading document metadata for documentId:', this.documentId);
           const documentId = this.documentId; // TypeScript type narrowing
-          this.attributes = await this.dbService.getDocumentMetadataByDocId(documentId);
+          this.attributes = await this.metadataService.getDocumentMetadata(documentId);
           console.log('[MetadataViewer] Loaded', this.attributes.length, 'attributes for document');
         } catch (err) {
           console.error('Errore recupero metadati documento:', err);

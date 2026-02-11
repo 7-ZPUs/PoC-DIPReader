@@ -23,7 +23,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     
     // File operations
     file: {
-        read: (filePath) => ipcRenderer.invoke('file:read', filePath)
+        read: (filePath) => ipcRenderer.invoke('file:read', filePath),
+        openExternal: (filePath) => ipcRenderer.invoke('file:open-external', filePath),
+        download: (filePath) => ipcRenderer.invoke('file:download', filePath)
     },
     
     // AI Semantic Search operations

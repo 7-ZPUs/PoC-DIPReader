@@ -29,6 +29,8 @@ declare global {
       };
       file: {
         read: (filePath: string) => Promise<{ success: boolean; data: ArrayBuffer; mimeType: string }>;
+        openExternal: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+        download: (filePath: string) => Promise<{ success: boolean; canceled?: boolean; savedPath?: string; error?: string }>;
       };
       ai: {
         init: () => Promise<{ status: string }>;
@@ -132,8 +134,9 @@ export class DatabaseService {
 
   /**
    * Execute a SQL query on the database
+   * This is the main method for all services to interact with the database
    */
-  private async executeQuery<T = any>(sql: string, params: any[] = []): Promise<T> {
+  async executeQuery<T = any>(sql: string, params: any[] = []): Promise<T> {
     if (!this.dbReady) {
       throw new Error('Database not ready yet');
     }
@@ -166,45 +169,6 @@ export class DatabaseService {
    */
   getCurrentDipPath(): string | null {
     return this.currentDipPath;
-  }
-
-  /**
-   * Recupera i metadati per un file dal database.
-   */
-  async getMetadataForFile(fileId: number): Promise<any> {
-    const attributes = await this.getMetadataAttributes(fileId);
-    if (attributes.length === 0) {
-      return { error: 'Metadati non trovati nel DB.' };
-    }
-    // Converte array in oggetto
-    return attributes.reduce((acc, attr) => ({ ...acc, [attr.key]: attr.value }), {});
-  }
-
-  /**
-   * Recupera il percorso fisico per un file dal database.
-   */
-  async getPhysicalPathForFile(fileId: number): Promise<string | undefined> {
-    let query = `
-      SELECT root_path
-      FROM file
-      WHERE id = ?
-    `;
-    const rows = await this.executeQuery<{ root_path: string }[]>(query, [fileId]);
-
-    if (rows.length === 0) {
-      return undefined;
-    }
-    
-    // Build the full path combining DIP root and file path
-    const filePath = rows[0].root_path;
-    
-    if (!this.currentDipPath) {
-      console.warn('Current DIP path not set, returning relative path');
-      return filePath;
-    }
-
-    // Combine paths
-    return `${this.currentDipPath}/${filePath}`;
   }
 
   /**
@@ -371,102 +335,9 @@ export class DatabaseService {
     return Array.from(classMap.values());
   }
 
-  async getDocumentMetadata(documentId: number): Promise<Record<string, any>> {
-    const rows = await this.executeQuery<{
-      meta_key: string;
-      meta_value: string;
-      meta_type: string;
-    }[]>(`
-      SELECT meta_key, meta_value, meta_type
-      FROM metadata
-      WHERE document_id = ?
-    `, [documentId]);
-
-    const metadata: Record<string, any> = {};
-
-    for (const row of rows) {
-      let value: any = row.meta_value;
-      
-      // Convert based on meta_type
-      if (row.meta_type === 'number') {
-        value = parseFloat(row.meta_value);
-      } else if (row.meta_type === 'boolean') {
-        value = row.meta_value === 'true' || row.meta_value === '1';
-      }
-
-      metadata[row.meta_key] = value;
-    }
-
-    return metadata;
-  }
-
-  /**
-   * Get full file path for a file ID
-   */
-  async getFilePath(fileId: number): Promise<string | null> {
-    const rows = await this.executeQuery<{
-      root_path: string;
-    }[]>(`
-      SELECT root_path
-      FROM file
-      WHERE id = ?
-    `, [fileId]);
-
-    if (rows.length === 0) {
-      return null;
-    }
-
-    return rows[0].root_path;
-  }
-
-  /**
-   * Get document subjects
-   */
-  async getDocumentSubjects(documentId: number): Promise<any[]> {
-    const rows = await this.executeQuery<any[]>(`
-      SELECT 
-        dsa.role,
-        s.id as subject_id,
-        pf.first_name as pf_first_name,
-        pf.last_name as pf_last_name,
-        pf.cf as pf_cf,
-        pg.denomination as pg_denomination,
-        pg.piva as pg_piva
-      FROM document_subject_association dsa
-      JOIN subject s ON s.id = dsa.subject_id
-      LEFT JOIN subject_pf pf ON pf.subject_id = s.id
-      LEFT JOIN subject_pg pg ON pg.subject_id = s.id
-      WHERE dsa.document_id = ?
-    `, [documentId]);
-
-    return rows;
-  }
-
-  /**
-   * Get administrative procedures for a document
-   */
-  async getDocumentProcedures(documentId: number): Promise<any[]> {
-    const rows = await this.executeQuery<any[]>(`
-      SELECT 
-        ap.catalog_uri,
-        ap.title,
-        ap.subject_of_interest,
-        p.phase_type,
-        p.start_date,
-        p.end_date
-      FROM document d
-      LEFT JOIN administrative_procedure ap ON ap.id IN (
-        SELECT procedure_id FROM phase WHERE procedure_id = ap.id
-      )
-      LEFT JOIN phase p ON p.procedure_id = ap.id
-      WHERE d.id = ?
-    `, [documentId]);
-
-    return rows;
-  }
-
   /**
    * Get available metadata keys for filters
+   * Maintained for backward compatibility - consider moving to SearchService
    */
   async getAvailableMetadataKeys(): Promise<string[]> {
     const rows = await this.executeQuery<{ meta_key: string }[]>(`
@@ -480,58 +351,8 @@ export class DatabaseService {
   }
 
   /**
-   * Get grouped filter keys organized by category
-   */
-  async getGroupedFilterKeys(): Promise<Array<{
-    groupLabel: string;
-    groupPath: string;
-    options: Array<{ value: string; label: string }>;
-  }>> {
-    const keys = await this.getAvailableMetadataKeys();
-    
-    // Group keys by common prefixes or categories
-    const groups: Map<string, string[]> = new Map();
-    
-    for (const key of keys) {
-      // Simple grouping logic - you can customize this
-      let group = 'General';
-      
-      if (key.includes('Data') || key.includes('Date')) {
-        group = 'Date Fields';
-      } else if (key.includes('Codice') || key.includes('Id')) {
-        group = 'Identifiers';
-      } else if (key.includes('Nome') || key.includes('Denominazione')) {
-        group = 'Names';
-      } else if (key.includes('Indirizzo') || key.includes('Sede')) {
-        group = 'Addresses';
-      }
-      
-      if (!groups.has(group)) {
-        groups.set(group, []);
-      }
-      groups.get(group)!.push(key);
-    }
-    
-    // Convert to the expected format
-    const result: Array<{
-      groupLabel: string;
-      groupPath: string;
-      options: Array<{ value: string; label: string }>;
-    }> = [];
-    
-    for (const [groupLabel, keys] of groups.entries()) {
-      result.push({
-        groupLabel,
-        groupPath: groupLabel.toLowerCase().replace(/\s+/g, '-'),
-        options: keys.map(key => ({ value: key, label: key }))
-      });
-    }
-    
-    return result;
-  }
-
-  /**
    * Search documents by name and filters
+   * Core method for building the filtered tree structure
    */
   async searchDocuments(searchName: string, filters: Filter[]): Promise<FileNode[]> {
     let sql = `
@@ -610,148 +431,4 @@ export class DatabaseService {
 
     return Array.from(documentMap.values());
   }
-
-  /**
-   * Get metadata attributes for a file
-   */
-  async getMetadataAttributes(fileId: number): Promise<Array<{ key: string; value: string; type: string }>> {
-    // First try to get file-specific metadata
-    let rows = await this.executeQuery<{
-      meta_key: string;
-      meta_value: string;
-      meta_type: string;
-    }[]>(`
-      SELECT meta_key, meta_value, meta_type
-      FROM metadata
-      WHERE file_id = ?
-    `, [fileId]);
-
-    // If no file-specific metadata, get document metadata
-    if (rows.length === 0) {
-      rows = await this.executeQuery<{
-        meta_key: string;
-        meta_value: string;
-        meta_type: string;
-      }[]>(`
-        SELECT m.meta_key, m.meta_value, m.meta_type
-        FROM metadata m
-        JOIN file f ON f.document_id = m.document_id
-        WHERE f.id = ? AND m.document_id IS NOT NULL
-      `, [fileId]);
-    }
-
-    return rows.map(row => ({
-      key: row.meta_key,
-      value: row.meta_value,
-      type: row.meta_type
-    }));
-  }
-
-  /**
-   * Get metadata attributes for a document
-   */
-  async getDocumentMetadataByDocId(documentId: number): Promise<Array<{ key: string; value: string; type: string }>> {
-    const rows = await this.executeQuery<{
-      meta_key: string;
-      meta_value: string;
-      meta_type: string;
-    }[]>(`
-      SELECT meta_key, meta_value, meta_type
-      FROM metadata
-      WHERE document_id = ? AND file_id IS NULL
-      ORDER BY meta_key
-    `, [documentId]);
-
-    return rows.map(row => ({
-      key: row.meta_key,
-      value: row.meta_value,
-      type: row.meta_type
-    }));
-  }
-
-  /**
-   * Get physical path for a file from database
-   */
-  async getPhysicalPathFromDb(fileId: number): Promise<string | undefined> {
-    const rows = await this.executeQuery<{
-      root_path: string;
-    }[]>(`
-      SELECT root_path
-      FROM file
-      WHERE id = ?
-    `, [fileId]);
-
-    if (rows.length === 0) {
-      return undefined;
-    }
-
-    // Build the full path combining DIP root and file path
-    const filePath = rows[0].root_path;
-    
-    if (!this.currentDipPath) {
-      console.warn('Current DIP path not set, returning relative path');
-      return filePath;
-    }
-
-    // Combine paths
-    return `${this.currentDipPath}/${filePath}`;
-  }
-
-  /**
-   * Get integrity status for a file
-   */
-  async getIntegrityStatus(fileId: number): Promise<{
-    isValid: boolean;
-    algorithm: string;
-    date_calculated: string;} | null> {
-    const query = `
-      SELECT result, algorithm, date_calculated
-      FROM file_integrity
-      WHERE file_id = ?
-    `;
-    const rows = await this.executeQuery<{
-      result: boolean;
-      algorithm: string;
-      date_calculated: string;
-    }[]>(query, [fileId]);
-
-    if (rows.length === 0) {
-      return null; // No integrity check found
-    }
-
-    const { result, algorithm, date_calculated } = rows[0];
-    
-    return {
-      isValid: result,
-      algorithm,
-      date_calculated
-    };
-  }
-
-  /**
-   * Save integrity status for a file
-   */
-  async saveIntegrityStatus(
-    fileId: number,
-    isValid: boolean,
-    calculatedHash: string,
-    expectedHash: string
-  ): Promise<void> {
-    // This could be implemented with a dedicated integrity_check table
-    // For now, we'll just log it
-    console.log(`[DatabaseService] Integrity check for file ${fileId}: ${isValid ? 'VALID' : 'INVALID'}`);
-    console.log(`Expected: ${expectedHash}, Calculated: ${calculatedHash}`);
-    
-    const query = 'INSERT INTO file_integrity (file_id, result, algorithm, date_calculated) VALUES (?, ?, ?, ?)';
-    await this.executeQuery(query, [fileId, isValid ? 1 : 0, 'SHA-256', new Date().toISOString()]);
-  }
-
-  /**
-   * Find value by key in a metadata object
-   */
-  findValueByKey(metadata: Record<string, any>, key: string): string | null {
-    return metadata[key] || null;
-  }
 }
-
-

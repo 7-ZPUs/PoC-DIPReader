@@ -10,7 +10,315 @@ DipReader è un'applicazione Electron che indicizza e gestisce archivi DIP (Docu
 
 ---
 
-## Architettura a 3 Layer
+## Architettura dei Servizi (Refactored)
+
+### Principi di Design
+- **Separation of Concerns**: Ogni servizio ha una responsabilità specifica e ben definita
+- **Single Responsibility**: Ogni servizio gestisce solo il suo dominio
+- **Dependency Injection**: I servizi dipendono solo da DatabaseService per le query
+- **Uniform Data Access**: Tutti i servizi usano `executeQuery()` per accedere al database
+
+### Service Layer Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        ANGULAR SERVICES                             │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │                   DatabaseService (Core)                     │  │
+│  │  ────────────────────────────────────────────────────────    │  │
+│  │  Responsabilità:                                            │  │
+│  │  • Gestione connessione database (init, open, close)       │  │
+│  │  • Solo metodo pubblico: executeQuery<T>(sql, params)      │  │
+│  │  • Gestione DIP (list, switch, delete, export)             │  │
+│  │  • Metodi per albero documenti (getTreeFromDb)             │  │
+│  │  • Metodo searchDocuments per filtri                       │  │
+│  │  • NO business logic specifica                             │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                          ▲                                          │
+│                          │ executeQuery()                           │
+│       ┌──────────────────┴───────────────────┐                     │
+│       │                  │                   │                     │
+│  ┌────▼──────────┐  ┌────▼──────────┐  ┌────▼──────────┐          │
+│  │ MetadataService│ │ FileService   │ │ SearchService │          │
+│  │ ──────────────│  │ ────────────  │  │ ────────────  │          │
+│  │ • getMetadata │  │ • getPhysical │  │ • searchSemantic         │
+│  │   Attributes  │  │   Path        │  │ • loadAvailable          │
+│  │ • getDocument │  │ • getDocument │  │   FilterKeys   │          │
+│  │   Metadata    │  │   Subjects    │  │ • groupFilter  │          │
+│  │ • getMetadata │  │ • getDocument │  │   Keys         │          │
+│  │   Value       │  │   Procedures  │  │ • applyFilters │          │
+│  │ • QUERY PROPRIE│ │ • QUERY PROPRIE│ │ • QUERY PROPRIE│          │
+│  └───────┬───────┘  └───────┬───────┘  └───────┬───────┘          │
+│          │                  │                   │                  │
+│          │                  │                   │                  │
+│  ┌───────▼──────────────────▼───────────────────▼──────┐           │
+│  │            FileIntegrityService                     │           │
+│  │  ──────────────────────────────────────────────     │           │
+│  │  Responsabilità:                                   │           │
+│  │  • verifyFileIntegrity (calcola hash SHA-256)     │           │
+│  │  • getExpectedHash (da metadata)                  │           │
+│  │  • saveVerificationResult                         │           │
+│  │  • getStoredStatus                                │           │
+│  │  • QUERY PROPRIE usando executeQuery()            │           │
+│  │  • Dipende da: DatabaseService, FileService       │           │
+│  └───────────────────────────────────────────────────────┘           │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Responsabilità dei Servizi
+
+#### 1. DatabaseService (Core Infrastructure)
+**File**: `/src/app/database-electron.service.ts`
+
+**Responsabilità**:
+- ✅ Gestione della connessione al database SQLite
+- ✅ Esposizione del metodo pubblico `executeQuery<T>(sql, params)` per tutti i servizi
+- ✅ Gestione DIP (list, open, switch, delete, export)
+- ✅ Metodi di navigazione albero: `getTreeFromDb()`, `searchDocuments()`
+- ✅ Accesso a `getCurrentDipPath()` per costruire percorsi fisici
+- ❌ NO business logic specifica di dominio
+- ❌ NO query specifiche per metadati, file, integrità
+
+**Metodi pubblici**:
+```typescript
+// Core database operations
+executeQuery<T>(sql: string, params: any[]): Promise<T>
+isDbReady(): boolean
+getCurrentDipUUID(): string | null
+getCurrentDipPath(): string | null
+
+// DIP management
+indexDirectory(): Promise<void>
+switchDatabase(dipUUID: string): Promise<void>
+deleteDatabase(dipUUID: string): Promise<boolean>
+exportDatabase(): Promise<boolean>
+getAvailableDips(): string[]
+getDatabaseInfo(): Promise<{...}>
+
+// Tree navigation (high-level queries)
+getTreeFromDb(): Promise<FileNode[]>
+searchDocuments(searchName: string, filters: Filter[]): Promise<FileNode[]>
+getAvailableMetadataKeys(): Promise<string[]>
+```
+
+#### 2. MetadataService
+**File**: `/src/app/services/metadata.service.ts`
+
+**Responsabilità**:
+- ✅ Gestione completa dei metadati dei documenti e file
+- ✅ Query proprie usando `dbService.executeQuery()`
+- ✅ Trasformazione dati (array → oggetto, parsing tipi)
+- ✅ Nessuna dipendenza da metodi specifici di DatabaseService
+
+**Metodi**:
+```typescript
+getMetadata(fileId: number): Promise<any>
+getMetadataValue(fileId: number, key: string): Promise<string | undefined>
+getExpectedHash(fileId: number): Promise<string | null>
+getMetadataAttributes(fileId: number): Promise<Array<{key, value, type}>>
+getDocumentMetadata(documentId: number): Promise<Array<{key, value, type}>>
+getDocumentMetadataAsObject(documentId: number): Promise<Record<string, any>>
+```
+
+**Query SQL proprie**:
+```sql
+-- File-specific metadata
+SELECT meta_key, meta_value, meta_type FROM metadata WHERE file_id = ?
+
+-- Document metadata fallback
+SELECT m.meta_key, m.meta_value, m.meta_type 
+FROM metadata m JOIN file f ON f.document_id = m.document_id 
+WHERE f.id = ? AND m.document_id IS NOT NULL
+
+-- Document metadata
+SELECT meta_key, meta_value, meta_type 
+FROM metadata WHERE document_id = ? AND file_id IS NULL
+```
+
+#### 3. FileService
+**File**: `/src/app/services/file.service.ts`
+
+**Responsabilità**:
+- ✅ Gestione percorsi fisici dei file
+- ✅ Query per soggetti e procedure amministrative
+- ✅ Query proprie usando `dbService.executeQuery()`
+- ✅ Accesso a `dbService.getCurrentDipPath()` per costruire path completi
+
+**Metodi**:
+```typescript
+getPhysicalPath(fileId: number): Promise<string | undefined>
+getDocumentSubjects(documentId: number): Promise<any[]>
+getDocumentProcedures(documentId: number): Promise<any[]>
+```
+
+**Query SQL proprie**:
+```sql
+-- Physical path
+SELECT root_path FROM file WHERE id = ?
+
+-- Document subjects
+SELECT dsa.role, s.id, pf.first_name, pf.last_name, pf.cf, 
+       pg.denomination, pg.piva
+FROM document_subject_association dsa
+JOIN subject s ON s.id = dsa.subject_id
+LEFT JOIN subject_pf pf ON pf.subject_id = s.id
+LEFT JOIN subject_pg pg ON pg.subject_id = s.id
+WHERE dsa.document_id = ?
+
+-- Administrative procedures
+SELECT ap.catalog_uri, ap.title, ap.subject_of_interest,
+       p.phase_type, p.start_date, p.end_date
+FROM document d
+LEFT JOIN administrative_procedure ap...
+WHERE d.id = ?
+```
+
+#### 4. FileIntegrityService
+**File**: `/src/app/services/file-integrity.service.ts`
+
+**Responsabilità**:
+- ✅ Verifica integrità dei file (calcolo hash SHA-256)
+- ✅ Query proprie usando `dbService.executeQuery()`
+- ✅ Salvataggio e recupero stato verifiche
+- ✅ Dipende da FileService per i percorsi fisici
+
+**Metodi**:
+```typescript
+verifyFileIntegrity(fileId: number): Promise<IntegrityCheckResult>
+verifyFileHash(fileBuffer: ArrayBuffer, expectedHash: string): Promise<IntegrityCheckResult>
+saveVerificationResult(fileId: number, result: IntegrityCheckResult): Promise<void>
+getStoredStatus(fileId: number): Promise<SavedIntegrityStatus | null>
+```
+
+**Query SQL proprie**:
+```sql
+-- Get expected hash (file-level)
+SELECT meta_value FROM metadata WHERE meta_key = 'Impronta' AND file_id = ?
+
+-- Get expected hash (document-level fallback)
+SELECT document_id FROM file WHERE id = ?
+SELECT meta_value FROM metadata 
+WHERE meta_key = 'Impronta' AND document_id = ? AND file_id IS NULL
+
+-- Save integrity result
+INSERT INTO file_integrity (file_id, result, algorithm, date_calculated) 
+VALUES (?, ?, ?, ?)
+
+-- Get stored integrity status
+SELECT result, algorithm, date_calculated 
+FROM file_integrity WHERE file_id = ?
+```
+
+#### 5. SearchService
+**File**: `/src/app/services/search.service.ts`
+
+**Responsabilità**:
+- ✅ Ricerca semantica tramite AI
+- ✅ Gestione filtri e grouping
+- ✅ Query proprie usando `dbService.executeQuery()`
+- ✅ Comunicazione con AI worker per embedding
+
+**Metodi**:
+```typescript
+searchSemantic(query: string | number[]): Promise<{id, score}[]>
+indexDocument(docId: number, text: string): Promise<void>
+reindexAll(): Promise<void>
+loadAvailableFilterKeys(): Promise<string[]>
+groupFilterKeys(keys: string[]): FilterOptionGroup[]
+applyFilters(filters: SearchFilter[], freeTextQuery?: string): Promise<number[]>
+getEmbeddingDebug(text: string): Promise<number[]>
+getAiState(): Promise<{initialized, indexedDocuments}>
+```
+
+**Query SQL proprie**:
+```sql
+-- Fetch metadata for AI indexing
+SELECT meta_key, meta_value FROM metadata 
+WHERE file_id = ? OR (document_id = ... AND file_id IS NULL)
+```
+
+---
+
+## Flow di Accesso ai Dati
+
+### Prima del Refactoring ❌
+```
+Component 
+  → DatabaseService.getMetadataAttributes()  // Business logic in DB service
+  → DatabaseService.executeQuery()           // Internal query
+
+FileIntegrityService
+  → window.electronAPI.db.query()            // Direct IPC bypass!
+  → DatabaseService.getIntegrityStatus()     // Mixed approach
+```
+
+### Dopo il Refactoring ✅
+```
+Component 
+  → MetadataService.getMetadataAttributes()
+      → DatabaseService.executeQuery()       // Uniform access
+
+FileIntegrityService
+  → DatabaseService.executeQuery()           // Uniform access
+  → FileService.getPhysicalPath()
+      → DatabaseService.executeQuery()       // Uniform access
+```
+
+---
+
+## Vantaggi del Refactoring
+
+### 1. **Separation of Concerns**
+Ogni servizio gestisce solo il suo dominio:
+- `MetadataService` → Metadati
+- `FileService` → File e percorsi
+- `FileIntegrityService` → Verifiche integrità
+- `SearchService` → Ricerca e filtri
+- `DatabaseService` → Solo infrastruttura database
+
+### 2. **Single Point of Access**
+Tutti i servizi usano `executeQuery()` di DatabaseService:
+```typescript
+// Before ❌
+await window.electronAPI.db.query(sql, params);
+await this.dbService.getMetadataAttributes(fileId);
+await this.dbService.saveIntegrityStatus(...);
+
+// After ✅
+await this.dbService.executeQuery<Type>(sql, params);
+```
+
+### 3. **Testabilità**
+Ogni servizio può essere testato indipendentemente:
+```typescript
+// Mock only DatabaseService.executeQuery()
+const mockDbService = {
+  executeQuery: jasmine.createSpy().and.returnValue(Promise.resolve([]))
+};
+const metadataService = new MetadataService(mockDbService);
+```
+
+### 4. **Manutenibilità**
+- Query SQL organizzate per dominio
+- Nessuna duplicazione di query
+- Facile trovare dove una query viene eseguita
+- Modifiche isolate a un singolo servizio
+
+### 5. **Type Safety**
+```typescript
+const rows = await this.dbService.executeQuery<Array<{
+  meta_key: string;
+  meta_value: string;
+  meta_type: string;
+}>>(`SELECT ... FROM metadata WHERE file_id = ?`, [fileId]);
+```
+
+---
+
+## Architettura a 3 Layer (Dettagliata)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐

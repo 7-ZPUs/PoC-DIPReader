@@ -120,12 +120,19 @@ export class SearchService {
       // 4. Processa ogni file trovato
       for (const node of allFiles) {
           try {
-            // Recupera metadati specifici per il file o documento
-            const metadata = await this.dbService.getDocumentMetadata(node.fileId);
+            // Recupera metadati specifici per il file o documento usando executeQuery
+            const metadataRows = await this.dbService.executeQuery<Array<{
+              meta_key: string;
+              meta_value: string;
+            }>>(`
+              SELECT meta_key, meta_value
+              FROM metadata
+              WHERE file_id = ? OR (document_id = (SELECT document_id FROM file WHERE id = ?) AND file_id IS NULL)
+            `, [node.fileId, node.fileId]);
             
-            const metadataText = Array.isArray(metadata)
-              ? metadata.map((m: any) => `${m.meta_key}: ${m.meta_value}`).join('. ')
-              : '';
+            const metadataText = metadataRows
+              .map((m: any) => `${m.meta_key}: ${m.meta_value}`)
+              .join('. ');
             
             // Testo combinato per l'AI
             const combinedText = (metadataText || '') + ` File: ${node.name}`;
@@ -154,7 +161,14 @@ export class SearchService {
    * Carica le chiavi disponibili per i filtri da tutti i file
    */
   async loadAvailableFilterKeys(): Promise<string[]> {
-    return await this.dbService.getAvailableMetadataKeys();
+    const rows = await this.dbService.executeQuery<Array<{ meta_key: string }>>(`
+      SELECT DISTINCT meta_key
+      FROM metadata
+      WHERE meta_key IS NOT NULL AND meta_key != ''
+      ORDER BY meta_key
+    `);
+
+    return rows.map(row => row.meta_key);
   }
 
   groupFilterKeys(keys: string[]): FilterOptionGroup[] {

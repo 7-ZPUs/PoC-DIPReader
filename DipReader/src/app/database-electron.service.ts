@@ -208,73 +208,6 @@ export class DatabaseService {
   }
 
   /**
-   * @deprecated Use FileIntegrityService.verifyFileIntegrity() instead
-   * This method is kept for backward compatibility but will be removed in the future.
-   * 
-   * Verifica l'integrità di un file leggendolo, calcolando l'hash SHA-256
-   * e confrontandolo con quello memorizzato nei metadati
-   */
-  async verifyFileIntegrity(fileId: number): Promise<{ valid: boolean, calculated: string, expected: string }> {
-    try {
-      // Get file path
-      const filePath = await this.getPhysicalPathForFile(fileId);
-      if (!filePath) {
-        throw new Error('File path not found');
-      }
-
-      // Read file via IPC
-      const fileData = await window.electronAPI.file.read(filePath);
-      if (!fileData.success) {
-        throw new Error('Failed to read file');
-      }
-
-      // Get expected hash from metadata - try file-level first, then document-level
-      let expectedHash = '';
-      
-      // First: look for Impronta associated with this specific file_id
-      const fileImprontaResult = await window.electronAPI.db.query(
-        `SELECT meta_value FROM metadata WHERE meta_key = 'Impronta' AND file_id = ?`,
-        [fileId]
-      );
-      if (fileImprontaResult?.length > 0) {
-        expectedHash = fileImprontaResult[0].meta_value;
-      } else {
-        // Fallback: look for document-level Impronta
-        const fileRow = await window.electronAPI.db.query(
-          `SELECT document_id FROM file WHERE id = ?`, [fileId]
-        );
-        if (fileRow?.length > 0) {
-          const docImprontaResult = await window.electronAPI.db.query(
-            `SELECT meta_value FROM metadata WHERE meta_key = 'Impronta' AND document_id = ? AND file_id IS NULL`,
-            [fileRow[0].document_id]
-          );
-          if (docImprontaResult?.length > 0) {
-            expectedHash = docImprontaResult[0].meta_value;
-          }
-        }
-      }
-      
-      if (!expectedHash) {
-        throw new Error('Hash not found in metadata');
-      }
-
-      // Calculate SHA-256
-      const hashBuffer = await crypto.subtle.digest('SHA-256', fileData.data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const calculatedHash = btoa(String.fromCharCode(...hashArray));
-
-      return {
-        valid: calculatedHash === expectedHash,
-        calculated: calculatedHash,
-        expected: expectedHash
-      };
-    } catch (error) {
-      console.error('[DatabaseService] Error verifying file integrity:', error);
-      throw error;
-    }
-  }
-
-  /**
    * Get list of available DIPs
    */
   getAvailableDips(): string[] {
@@ -465,47 +398,6 @@ export class DatabaseService {
     }
 
     return metadata;
-  }
-
-  async getFileMetadata(fileId: number): Promise<Record<string, any>> {
-    const rows = await this.executeQuery<{
-      meta_key: string;
-      meta_value: string;
-      meta_type: string;
-    }[]>(`
-      SELECT meta_key, meta_value, meta_type
-      FROM metadata
-      WHERE file_id = ?
-    `, [fileId]);
-
-    const metadata: Record<string, any> = {};
-
-    for (const row of rows) {
-      let value: any = row.meta_value;
-      
-      if (row.meta_type === 'number') {
-        value = parseFloat(row.meta_value);
-      } else if (row.meta_type === 'boolean') {
-        value = row.meta_value === 'true' || row.meta_value === '1';
-      }
-
-      metadata[row.meta_key] = value;
-    }
-
-    return metadata;
-  }
-
-  /**
-   * Read file content from the file system
-   */
-  async readFile(filePath: string): Promise<{ data: ArrayBuffer; mimeType: string }> {
-    try {
-      const result = await window.electronAPI.file.read(filePath);
-      return { data: result.data, mimeType: result.mimeType };
-    } catch (error) {
-      console.error('[DatabaseService] Error reading file:', error);
-      throw error;
-    }
   }
 
   /**
@@ -810,14 +702,30 @@ export class DatabaseService {
    */
   async getIntegrityStatus(fileId: number): Promise<{
     isValid: boolean;
-    calculatedHash: string;
-    expectedHash: string;
-    verifiedAt: string;
-  } | null> {
-    // For now, we don't have a separate integrity table
-    // Return null to indicate no cached integrity check
-    // This can be implemented later with a dedicated table
-    return null;
+    algorithm: string;
+    date_calculated: string;} | null> {
+    const query = `
+      SELECT result, algorithm, date_calculated
+      FROM file_integrity
+      WHERE file_id = ?
+    `;
+    const rows = await this.executeQuery<{
+      result: boolean;
+      algorithm: string;
+      date_calculated: string;
+    }[]>(query, [fileId]);
+
+    if (rows.length === 0) {
+      return null; // No integrity check found
+    }
+
+    const { result, algorithm, date_calculated } = rows[0];
+    
+    return {
+      isValid: result,
+      algorithm,
+      date_calculated
+    };
   }
 
   /**
@@ -834,15 +742,8 @@ export class DatabaseService {
     console.log(`[DatabaseService] Integrity check for file ${fileId}: ${isValid ? 'VALID' : 'INVALID'}`);
     console.log(`Expected: ${expectedHash}, Calculated: ${calculatedHash}`);
     
-    // TODO: Implement persistent storage of integrity checks
-    // CREATE TABLE IF NOT EXISTS integrity_check (
-    //   file_id INTEGER PRIMARY KEY,
-    //   is_valid BOOLEAN,
-    //   calculated_hash TEXT,
-    //   expected_hash TEXT,
-    //   verified_at TEXT,
-    //   FOREIGN KEY (file_id) REFERENCES file(id)
-    // );
+    const query = 'INSERT INTO file_integrity (file_id, result, algorithm, date_calculated) VALUES (?, ?, ?, ?)';
+    await this.executeQuery(query, [fileId, isValid ? 1 : 0, 'SHA-256', new Date().toISOString()]);
   }
 
   /**

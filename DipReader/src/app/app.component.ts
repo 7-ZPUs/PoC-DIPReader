@@ -153,7 +153,7 @@ export class AppComponent implements OnInit {
       // Carica lo stato di integrità salvato, se disponibile
       const storedStatus = await this.fileIntegrityService.getStoredStatus(node.fileId);
       if (storedStatus) {
-        this.integrityStatus = storedStatus.isValid ? 'valid' : 'invalid';
+        this.integrityStatus = storedStatus.result ? 'valid' : 'invalid';
         this.integrityVerifiedAt = storedStatus.verifiedAt;
         this.cdr.detectChanges();
       }

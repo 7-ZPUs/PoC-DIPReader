@@ -123,10 +123,9 @@ export class FileIntegrityService {
   async getStoredStatus(fileId: number): Promise<SavedIntegrityStatus | null> {
     const stored = await this.dbService.getIntegrityStatus(fileId);
     return stored ? {
-      isValid: stored.isValid,
-      calculatedHash: stored.calculatedHash,
-      expectedHash: stored.expectedHash,
-      verifiedAt: stored.verifiedAt
+      result: stored.isValid,
+      algorithm: stored.algorithm,
+      verifiedAt: stored.date_calculated,
     } : null;
   }
 }

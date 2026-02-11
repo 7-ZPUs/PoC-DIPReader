@@ -275,3 +275,12 @@ CREATE TABLE IF NOT EXISTS phase (
     administrative_procedure_id INTEGER,
     FOREIGN KEY (administrative_procedure_id) REFERENCES administrative_procedure(id)
 );
+
+CREATE TABLE IF NOT EXISTS file_integrity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id INTEGER NOT NULL,
+    result BOOLEAN NOT NULL,
+    algorithm VARCHAR(50) NOT NULL,
+    date_calculated DATE NOT NULL,
+    FOREIGN KEY (file_id) REFERENCES file(id)
+);

@@ -176,11 +176,12 @@ export class AppComponent implements OnInit {
     console.log(`Percorso fisico recuperato per fileId ${node.fileId}:`, physicalPath);
     if (physicalPath) {
       console.log(`Apertura percorso fisico: ${physicalPath}`);
-      // Usa Electron shell API per aprire il file con l'applicazione predefinita
-      const result = await window.electronAPI.file.openExternal(physicalPath);
+      // Apri il file in una nuova finestra Electron
+      const result = await window.electronAPI.file.openInWindow(physicalPath);
       if (!result.success) {
         console.error(`Errore nell'apertura del file:`, result.error);
-        alert('Impossibile aprire il file: ' + result.error);
+        console.log('Apertura nel browser utente esterno come fallback...');
+        const externalResult = await window.electronAPI.file.openExternal(physicalPath);
       }
     } else {
       console.error(`Impossibile trovare il percorso fisico per il file ID: ${node.fileId}`);

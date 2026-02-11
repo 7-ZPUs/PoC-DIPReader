@@ -30,6 +30,7 @@ declare global {
       file: {
         read: (filePath: string) => Promise<{ success: boolean; data: ArrayBuffer; mimeType: string }>;
         openExternal: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+        openInWindow: (filePath: string) => Promise<{ success: boolean; error?: string }>;
         download: (filePath: string) => Promise<{ success: boolean; canceled?: boolean; savedPath?: string; error?: string }>;
       };
       ai: {

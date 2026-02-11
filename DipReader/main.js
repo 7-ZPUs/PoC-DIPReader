@@ -263,6 +263,40 @@ ipcMain.handle('file:open-external', async (event, filePath) => {
     }
 });
 
+// Open file in a new Electron window
+ipcMain.handle('file:open-in-window', async (event, filePath) => {
+    try {
+        if (!fs.existsSync(filePath)) {
+            throw new Error('File not found: ' + filePath);
+        }
+        
+        console.log('[IPC] Opening file in new window:', filePath);
+        
+        const fileWindow = new BrowserWindow({
+            width: 1000,
+            height: 800,
+            webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true,
+                webSecurity: true
+            },
+            title: path.basename(filePath)
+        });
+        
+        // Load the file using file:// protocol
+        // For PDFs and other files that browsers can display
+        fileWindow.loadFile(filePath);
+        
+        // Remove menu bar for cleaner look
+        fileWindow.setMenuBarVisibility(false);
+        
+        return { success: true };
+    } catch (err) {
+        console.error('[IPC] Error opening file in window:', err);
+        return { success: false, error: err.message };
+    }
+});
+
 // Download file to user-selected location
 ipcMain.handle('file:download', async (event, filePath) => {
     try {

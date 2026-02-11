@@ -222,9 +222,16 @@ ipcMain.handle('file:read', async (event, filePath) => {
         }
         
         const content = fs.readFileSync(filePath);
+        // Convert Buffer to ArrayBuffer properly
+        // content.buffer might be larger than the actual data, so we need to slice it
+        const arrayBuffer = content.buffer.slice(
+            content.byteOffset, 
+            content.byteOffset + content.byteLength
+        );
+        
         return { 
             success: true, 
-            data: content.buffer,
+            data: arrayBuffer,
             mimeType: getMimeType(filePath)
         };
     } catch (err) {

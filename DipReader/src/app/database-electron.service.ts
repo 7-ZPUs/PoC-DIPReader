@@ -184,10 +184,33 @@ export class DatabaseService {
    * Recupera il percorso fisico per un file dal database.
    */
   async getPhysicalPathForFile(fileId: number): Promise<string | undefined> {
-    return this.getPhysicalPathFromDb(fileId);
+    let query = `
+      SELECT root_path
+      FROM file
+      WHERE id = ?
+    `;
+    const rows = await this.executeQuery<{ root_path: string }[]>(query, [fileId]);
+
+    if (rows.length === 0) {
+      return undefined;
+    }
+    
+    // Build the full path combining DIP root and file path
+    const filePath = rows[0].root_path;
+    
+    if (!this.currentDipPath) {
+      console.warn('Current DIP path not set, returning relative path');
+      return filePath;
+    }
+
+    // Combine paths
+    return `${this.currentDipPath}/${filePath}`;
   }
 
   /**
+   * @deprecated Use FileIntegrityService.verifyFileIntegrity() instead
+   * This method is kept for backward compatibility but will be removed in the future.
+   * 
    * Verifica l'integrità di un file leggendolo, calcolando l'hash SHA-256
    * e confrontandolo con quello memorizzato nei metadati
    */

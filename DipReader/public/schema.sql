@@ -188,6 +188,7 @@ CREATE TABLE IF NOT EXISTS document (
 CREATE TABLE IF NOT EXISTS file (
     id INTEGER PRIMARY KEY,
     relative_path VARCHAR(255) NOT NULL,
+    root_path VARCHAR(255) NOT NULL,
     is_main BOOLEAN NOT NULL DEFAULT 0,
     document_id INTEGER,
     FOREIGN KEY (document_id) REFERENCES document(id)

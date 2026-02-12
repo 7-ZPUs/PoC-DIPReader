@@ -1,7 +1,7 @@
 // db-handler.js - Main process database handler
 const sqlite3 = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
+const path = require('node:path');
+const fs = require('node:fs');
 const { app } = require('electron');
 
 class DatabaseHandler {

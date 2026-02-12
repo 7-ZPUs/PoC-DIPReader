@@ -92,11 +92,11 @@ class DatabaseHandler {
   saveVector(docId, vector) {
       if (!this.db) return;
       try {
-          // Converti Float32Array in Buffer (Blob)
           const buffer = Buffer.from(vector.buffer);
           this.db.prepare(
               'INSERT OR REPLACE INTO document_vectors (doc_id, embedding) VALUES (?, ?)'
           ).run(docId, buffer);
+          //console.log(`[DB Handler] Saved vector for doc_id: ${docId}`);
       } catch (e) {
           console.error('[DB Handler] Error saving vector:', e);
       }

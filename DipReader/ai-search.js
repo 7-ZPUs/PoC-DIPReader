@@ -157,15 +157,17 @@ async function reindexAll(documents) {
   vectorCache.clear();
 
   let indexed = 0;
+  const logInterval = Math.max(50, Math.floor(documents.length / 10));
   for (const doc of documents) {
     // Nota: indexDocument aggiorna automaticamente la vectorCache
     const text = doc.text || `Document ${doc.id}`;
     await indexDocument(doc.id, text);
     indexed++;
     
-    if (indexed % 10 === 0) {
+    if (indexed % logInterval === 0) {
       console.log(`[AI Search] Progress: ${indexed}/${documents.length}`);
     }
+    await new Promise(resolve => setTimeout(resolve, 10));
   }
 
   console.log(`[AI Search] Reindexing complete: ${indexed} documents in memory.`);

@@ -7,7 +7,7 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "electron": "ng build --base-href / && electron .",
-    "electron-ubuntu": "ng build --base-href / && electron . --ozone-platform=x11",
+    "electron:ubuntu": "ng build --base-href / && electron . --ozone-platform=x11",
     "electron:rebuild": "electron-rebuild -f -w better-sqlite3",
     "dist": "ng build --configuration production --base-href / && electron-builder",
     "clean": "rm -rf dist dist-electron node_modules/.vite"

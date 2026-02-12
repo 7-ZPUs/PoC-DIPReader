@@ -448,15 +448,10 @@ export class DatabaseService {
     console.log('[DatabaseService] Avvio ricerca semantica:', queryText);
 
     try {
-      // Passiamo un oggetto come si aspetta il main.js aggiornato
       const response = await window.electronAPI.ai.search({ 
         query: queryText,
-        requestId: Date.now() // Generiamo un ID semplice
+        requestId: Date.now()
       });
-
-      // La risposta nel main.js aggiornato è { requestId, status, results }
-      // Oppure direttamente results se non è stato gestito l'errore.
-      // Facciamo un controllo robusto:
       
       let results = [];
       if (Array.isArray(response)) {
@@ -466,12 +461,9 @@ export class DatabaseService {
       }
 
       console.log('[DatabaseService] Risultati AI:', results);
-      
-      // Ora dobbiamo recuperare i nomi dei file basandoci sugli ID restituiti dall'AI
+
       if (results.length > 0) {
         const docIds = results.map((r: any) => r.id);
-        // Qui dovresti avere un metodo per convertire doc_id in file
-        // Per ora ritorniamo i risultati raw
         return results;
       }
       

@@ -95,43 +95,6 @@ Proof of Concept del Capitolato C3 - "DIP Reader: Applicazione per la gestione e
    ```
 
 ---
-## Development server
-
-### Modalità Development (solo Angular)
-
-Per sviluppare solo la parte Angular in modalità web (senza Electron):
-
-```bash
-ng serve
-```
-
-Apri il browser su `http://localhost:4200/`. L'applicazione si ricaricherà automaticamente ad ogni modifica.
-
-> **Attenzione**: In questa modalità le API Electron non saranno disponibili.
-
-### Modalità Electron Development
-
-Per sviluppare con Electron (modalità consigliata):
-
-```bash
-npm run electron
-```
-
-Questo comando:
-1. Compila il progetto Angular
-2. Avvia l'applicazione Electron con live reload
-
-### Watch Mode
-
-Per ricompilare automaticamente ad ogni modifica (senza avviare Electron):
-
-```bash
-npm run watch
-```
-
----
-
-## Building
 
 ### Development Build
 
@@ -287,8 +250,5 @@ npm run electron:ubuntu
 
 | Script | Descrizione |
 |--------|-------------|
-| `npm run ng` | CLI Angular |
-| `npm run watch` | Build Angular in watch mode |
-| `npm test` | Esegui unit test con Vitest |
 | `npm run electron` | Build + avvia Electron (development) |
 | `npm run dist` | Build production + crea pacchetti installabili |

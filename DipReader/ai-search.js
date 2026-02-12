@@ -1,6 +1,6 @@
 // ai-search.js - Semantic Search with Transformers.js in Electron Main Process
 const { pipeline, env } = require('@xenova/transformers');
-const path = require('path');
+const path = require('node:path');
 const { app } = require('electron');
 
 // ============================================================================
@@ -43,7 +43,7 @@ async function initialize() {
 
   console.log('[AI Search] Inizializzazione modello...');
   try {
-    const fs = require('fs');
+    const fs = require('node:fs');
     if (!fs.existsSync(modelsPath)) {
         console.error(`[AI Search] ERRORE GRAVE: Cartella modelli mancante: ${modelsPath}`);
     }

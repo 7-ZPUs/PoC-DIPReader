@@ -1,6 +1,6 @@
 const { app, BrowserWindow, protocol, ipcMain, dialog, shell } = require('electron');
-const path = require('path');
-const fs = require('fs');
+const path = require('node:path');
+const fs = require('node:fs');
 const dbHandler = require('./db-handler');
 const IndexerMain = require('./indexer-main');
 const aiSearch = require('./ai-search');

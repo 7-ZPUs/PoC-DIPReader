@@ -1,4 +1,4 @@
-const { app, BrowserWindow, protocol, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, protocol, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const dbHandler = require('./db-handler');
@@ -230,14 +230,109 @@ ipcMain.handle('file:read', async (event, filePath) => {
         }
         
         const content = fs.readFileSync(filePath);
+        // Convert Buffer to ArrayBuffer properly
+        // content.buffer might be larger than the actual data, so we need to slice it
+        const arrayBuffer = content.buffer.slice(
+            content.byteOffset, 
+            content.byteOffset + content.byteLength
+        );
+        
         return { 
             success: true, 
-            data: content.buffer,
+            data: arrayBuffer,
             mimeType: getMimeType(filePath)
         };
     } catch (err) {
         console.error('[IPC] Error reading file:', err);
         throw err;
+    }
+});
+
+// Open file with default system application
+ipcMain.handle('file:open-external', async (event, filePath) => {
+    try {
+        if (!fs.existsSync(filePath)) {
+            throw new Error('File not found: ' + filePath);
+        }
+        
+        console.log('[IPC] Opening file with system app:', filePath);
+        const result = await shell.openPath(filePath);
+        
+        // shell.openPath returns empty string on success, or error message on failure
+        if (result) {
+            console.error('[IPC] Error opening file:', result);
+            return { success: false, error: result };
+        }
+        
+        return { success: true };
+    } catch (err) {
+        console.error('[IPC] Error opening file:', err);
+        return { success: false, error: err.message };
+    }
+});
+
+// Open file in a new Electron window
+ipcMain.handle('file:open-in-window', async (event, filePath) => {
+    try {
+        if (!fs.existsSync(filePath)) {
+            throw new Error('File not found: ' + filePath);
+        }
+        
+        console.log('[IPC] Opening file in new window:', filePath);
+        
+        const fileWindow = new BrowserWindow({
+            width: 1000,
+            height: 800,
+            webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true,
+                webSecurity: true
+            },
+            title: path.basename(filePath)
+        });
+        
+        // Load the file using file:// protocol
+        // For PDFs and other files that browsers can display
+        fileWindow.loadFile(filePath);
+        
+        // Remove menu bar for cleaner look
+        fileWindow.setMenuBarVisibility(false);
+        
+        return { success: true };
+    } catch (err) {
+        console.error('[IPC] Error opening file in window:', err);
+        return { success: false, error: err.message };
+    }
+});
+
+// Download file to user-selected location
+ipcMain.handle('file:download', async (event, filePath) => {
+    try {
+        if (!fs.existsSync(filePath)) {
+            throw new Error('File not found: ' + filePath);
+        }
+        
+        const fileName = path.basename(filePath);
+        
+        // Show save dialog
+        const result = await dialog.showSaveDialog({
+            title: 'Save File',
+            defaultPath: fileName,
+            buttonLabel: 'Save'
+        });
+        
+        if (result.canceled || !result.filePath) {
+            return { success: false, canceled: true };
+        }
+        
+        // Copy file to selected location
+        fs.copyFileSync(filePath, result.filePath);
+        
+        console.log('[IPC] File downloaded to:', result.filePath);
+        return { success: true, savedPath: result.filePath };
+    } catch (err) {
+        console.error('[IPC] Error downloading file:', err);
+        return { success: false, error: err.message };
     }
 });
 

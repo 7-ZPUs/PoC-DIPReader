@@ -22,8 +22,8 @@
     <strong>Vettore Generato (Primi 50 valori di 384):</strong>
     <div style="
       background: #000; 
-      color: #0f0; 
-      font-family: monospace; 
+      color: #0f0;
+      font-family: monospace;
       font-size: 12px; 
       padding: 10px; 
       border-radius: 4px; 
@@ -150,8 +150,8 @@
     <div *ngIf="selectedFile; else noFile">
       <h2>{{ selectedFile.name }}</h2>
       
-      <!-- Barra Azioni File -->
-      <div class="file-actions">
+      <!-- Barra Azioni File (solo per nodi di tipo file) -->
+      <div class="file-actions" *ngIf="selectedFile.type === 'file' && selectedFile.fileId">
         <button (click)="openFile(selectedFile)">Apri in Nuova Scheda</button>
         <button (click)="downloadFile(selectedFile)">Scarica File</button>
         <button (click)="checkIntegrity(selectedFile)">Verifica Integrità</button>
@@ -168,12 +168,18 @@
       </div>
       
       <!-- Visualizzatore Metadati -->
-      <app-metadata-viewer [fileId]="selectedFile.fileId"></app-metadata-viewer>
+      <div class="metadata-container">
+        <h3>{{ selectedFile.type === 'folder' && selectedFile.documentId ? 'Proprietà del Documento' : 'Metadati' }}</h3>
+        <app-metadata-viewer 
+          [fileId]="selectedFile.fileId" 
+          [documentId]="selectedFile.documentId">
+        </app-metadata-viewer>
+      </div>
     </div>
 
     <!-- Messaggio Nessun File Selezionato -->
     <ng-template #noFile>
-      <p>Seleziona un file dall'albero per visualizzarne i dettagli.</p>
+      <p>Seleziona un documento o file dall'albero per visualizzarne i dettagli.</p>
     </ng-template>
   </div>
 </div>

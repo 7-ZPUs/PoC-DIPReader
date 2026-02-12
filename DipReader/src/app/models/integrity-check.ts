@@ -6,8 +6,10 @@ export interface IntegrityCheckResult {
 }
 
 
-export interface SavedIntegrityStatus extends IntegrityCheckResult {
+export interface SavedIntegrityStatus {
   verifiedAt: string;
+  algorithm: string;
+  result: boolean;
 }
 
 

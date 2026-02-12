@@ -6,6 +6,8 @@ import { MetadataViewerComponent } from './metadata-viewer.component';
 import { Filter } from './filter-manager';
 
 import { SearchService } from './services/search.service';
+import { FileIntegrityService } from './services/file-integrity.service';
+import { FileService } from './services/file.service';
 
 @Component({
   selector: 'app-root',
@@ -44,7 +46,9 @@ export class AppComponent implements OnInit {
   constructor(
     private cdr: ChangeDetectorRef,
     private dbService: DatabaseService,
-    private searchService: SearchService
+    private searchService: SearchService,
+    private fileIntegrityService: FileIntegrityService,
+    private fileService: FileService
   ) { 
     console.log('App avviata. Attendo 5 secondi prima di indicizzare per l\'AI...');
     
@@ -64,8 +68,8 @@ export class AppComponent implements OnInit {
       return;
     }
 
-    this.availableKeys = await this.dbService.getAvailableMetadataKeys();
-    this.groupedFilterKeys = await this.dbService.getGroupedFilterKeys();
+    this.availableKeys = await this.searchService.loadAvailableFilterKeys();
+    this.groupedFilterKeys = this.searchService.groupFilterKeys(this.availableKeys);
     console.log('Filtri raggruppati caricati:', this.groupedFilterKeys.length, 'gruppi');
   }
 
@@ -110,17 +114,36 @@ export class AppComponent implements OnInit {
   }
 
   async handleNodeClick(node: FileNode) {
+    console.log('[AppComponent] Node clicked:', {
+      name: node.name,
+      type: node.type,
+      fileId: node.fileId,
+      documentId: node.documentId
+    });
+    
     if (node.type === 'folder') {
       node.expanded = !node.expanded;
-      // Deseleziona il file quando si interagisce con le cartelle
-      this.selectedFile = null;
-      this.integrityStatus = 'none';
-      this.integrityVerifiedAt = null;
-      this.metadata = null;
+      
+      // If it's a document node (has documentId), select it to show metadata
+      if (node.documentId) {
+        console.log('[AppComponent] Selecting document node with ID:', node.documentId);
+        this.selectedFile = node;
+        this.integrityStatus = 'none';
+        this.integrityVerifiedAt = null;
+        this.metadata = null;
+      } else {
+        // Regular folder without document, deselect
+        console.log('[AppComponent] Deselecting - regular folder');
+        this.selectedFile = null;
+        this.integrityStatus = 'none';
+        this.integrityVerifiedAt = null;
+        this.metadata = null;
+      }
     } else {
-      // Imposta il file selezionato così la parte destra si aggiorna
+      // File node selected
+      console.log('[AppComponent] Selecting file node with ID:', node.fileId);
       this.selectedFile = node;
-      this.integrityStatus = 'none'; // Resetta lo stato della verifica per il nuovo file
+      this.integrityStatus = 'none'; 
       this.integrityVerifiedAt = null;
 
       if (!node.fileId) {
@@ -129,22 +152,17 @@ export class AppComponent implements OnInit {
         return;
       }
 
-      // Recupera i metadati in modo ASINCRONO dal database usando fileId
-      const attributes = await this.dbService.getMetadataAttributes(node.fileId);
-      // Converte array in oggetto per retrocompatibilità
-      this.metadata = attributes.length > 0
-        ? attributes.reduce((acc, attr) => ({ ...acc, [attr.key]: attr.value }), {})
-        : { error: 'Metadati non trovati nel DB.' };
-      console.log(`Metadati per file ID ${node.fileId}:`, this.metadata);
-
       // Carica lo stato di integrità salvato, se disponibile
-      const storedStatus = await this.dbService.getIntegrityStatus(node.fileId);
+      const storedStatus = await this.fileIntegrityService.getStoredStatus(node.fileId);
       if (storedStatus) {
-        this.integrityStatus = storedStatus.isValid ? 'valid' : 'invalid';
+        this.integrityStatus = storedStatus.result ? 'valid' : 'invalid';
         this.integrityVerifiedAt = storedStatus.verifiedAt;
         this.cdr.detectChanges();
       }
     }
+    
+    // Force change detection to update the view
+    this.cdr.detectChanges();
   }
 
   async openFile(node: FileNode) {
@@ -154,11 +172,17 @@ export class AppComponent implements OnInit {
     }
 
     // Recupera il percorso fisico corretto dal servizio
-    const physicalPath = await this.dbService.getPhysicalPathForFile(node.fileId);
+    const physicalPath = await this.fileService.getPhysicalPath(node.fileId);
+    console.log(`Percorso fisico recuperato per fileId ${node.fileId}:`, physicalPath);
     if (physicalPath) {
       console.log(`Apertura percorso fisico: ${physicalPath}`);
-      // Apre il file in una nuova scheda
-      window.open(physicalPath, '_blank');
+      // Apri il file in una nuova finestra Electron
+      const result = await window.electronAPI.file.openInWindow(physicalPath);
+      if (!result.success) {
+        console.error(`Errore nell'apertura del file:`, result.error);
+        console.log('Apertura nel browser utente esterno come fallback...');
+        const externalResult = await window.electronAPI.file.openExternal(physicalPath);
+      }
     } else {
       console.error(`Impossibile trovare il percorso fisico per il file ID: ${node.fileId}`);
       alert('File non trovato o percorso mancante.');
@@ -171,15 +195,16 @@ export class AppComponent implements OnInit {
       return;
     }
 
-    const physicalPath = await this.dbService.getPhysicalPathForFile(node.fileId);
+    const physicalPath = await this.fileService.getPhysicalPath(node.fileId);
     if (physicalPath) {
-      const link = document.createElement('a');
-      link.href = physicalPath;
-      // L'attributo download forza il browser a scaricare il file invece di aprirlo
-      link.download = physicalPath.split('/').pop() || node.name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Usa Electron dialog per far scegliere all'utente dove salvare il file
+      const result = await window.electronAPI.file.download(physicalPath);
+      if (result.success) {
+        alert('File salvato con successo in: ' + result.savedPath);
+      } else if (!result.canceled) {
+        alert('Errore durante il salvataggio: ' + result.error);
+      }
+      // Se canceled, l'utente ha annullato - non mostrare nulla
     } else {
       alert('File non trovato o percorso mancante.');
     }
@@ -193,16 +218,21 @@ export class AppComponent implements OnInit {
 
     this.integrityStatus = 'loading';
     this.integrityVerifiedAt = null;
+    
     try {
-      const result = await this.dbService.verifyFileIntegrity(node.fileId);
-      this.integrityStatus = result.valid ? 'valid' : 'invalid';
+      const result = await this.fileIntegrityService.verifyFileIntegrity(node.fileId);
+      this.integrityStatus = result.isValid ? 'valid' : 'invalid';
       this.integrityVerifiedAt = new Date().toISOString();
+      
+      // Save the verification result for future reference
+      await this.fileIntegrityService.saveVerificationResult(node.fileId, result);
+      
       this.cdr.detectChanges(); // Forza l'aggiornamento della UI prima dell'alert
 
-      if (!result.valid) {
-        console.warn(`Hash mismatch! Atteso: ${result.expected}, Calcolato: ${result.calculated}`);
+      if (!result.isValid) {
+        console.warn(`Hash mismatch! Atteso: ${result.expectedHash}, Calcolato: ${result.calculatedHash}`);
         setTimeout(() => {
-          alert(`Attenzione: Hash non corrispondente!\n\nAtteso:\n${result.expected}\n\nCalcolato:\n${result.calculated}`);
+          alert(`Attenzione: Hash non corrispondente!\n\nAtteso:\n${result.expectedHash}\n\nCalcolato:\n${result.calculatedHash}`);
         }, 100);
       }
     } catch (err: any) {

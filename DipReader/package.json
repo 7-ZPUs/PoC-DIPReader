@@ -4,15 +4,13 @@
   "main": "main.js",
   "scripts": {
     "ng": "ng",
-    "generate-manifest": "node ./generate-manifest.js",
-    "start": "electron-forge start",
-    "build": "npm run generate-manifest && ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "electron": "ng build --base-href / && electron . --ozone-platform=x11",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
-    "dist": "ng build --configuration production --base-href / && electron-builder"
+    "electron": "ng build --base-href / && electron .",
+    "electron-ubuntu": "ng build --base-href / && electron . --ozone-platform=x11",
+    "electron:rebuild": "electron-rebuild -f -w better-sqlite3",
+    "dist": "ng build --configuration production --base-href / && electron-builder",
+    "clean": "rm -rf dist dist-electron node_modules/.vite"
   },
   "prettier": {
     "printWidth": 100,

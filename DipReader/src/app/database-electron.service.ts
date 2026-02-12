@@ -38,6 +38,9 @@ declare global {
         state: () => Promise<{ initialized: boolean; indexedDocuments: number }>;
         clear: () => Promise<{ status: string }>;
       };
+      utils: {
+        showMessage: (message: string, type?: 'info' | 'error' | 'warning') => Promise<boolean>;
+      };
     };
   }
 }

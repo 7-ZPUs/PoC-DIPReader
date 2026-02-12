@@ -35,5 +35,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         reindexAll: (data) => ipcRenderer.invoke('ai:reindex-all', data),
         state: () => ipcRenderer.invoke('ai:state'),
         clear: () => ipcRenderer.invoke('ai:clear')
+    },
+
+    utils: {
+        showMessage: (message, type = 'info') => ipcRenderer.invoke('dialog:show-message', { message, type })
     }
 });

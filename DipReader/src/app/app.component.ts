@@ -227,16 +227,16 @@ export class AppComponent implements OnInit {
 
       console.log('Avvio indicizzazione semantica (AI)...');
       
-      this.searchService.reindexAll().then(() => {
+      this.searchService.reindexAll().then(async () => {
          console.log('Indicizzazione AI completata con successo.');
-         alert('Indicizzazione Completata! Ora puoi usare la ricerca semantica.');
+         await window.electronAPI.utils.showMessage('Indicizzazione Completata! Ora puoi usare la ricerca semantica.', 'info');
       }).catch(err => {
          console.error('Errore AI:', err);
-         alert('Indicizzazione SQL ok, ma errore AI: ' + err.message);
+         window.electronAPI.utils.showMessage('Indicizzazione SQL ok, ma errore AI: ' + err.message, 'error');
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error running indexer:', error);
-      alert('Failed to import directory. Please check console for details.');
+      window.electronAPI.utils.showMessage('Errore durante l\'indicizzazione: ' + error.message, 'error');
     }
   }
 

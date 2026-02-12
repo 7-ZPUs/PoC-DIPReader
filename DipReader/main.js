@@ -364,6 +364,19 @@ ipcMain.handle('ai:reindex-all', async (event, data) => {
     }
 });
 
+ipcMain.handle('dialog:show-message', async (event, options) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    // Mostra il dialog nativo
+    await dialog.showMessageBox(win, {
+        type: options.type || 'info',
+        title: 'DIP Reader',
+        message: options.message,
+        buttons: ['OK']
+    });
+    // Quando si chiude, Electron gestisce il focus automaticamente
+    return true;
+});
+
 // ============================================
 // End of IPC Handlers
 // ============================================

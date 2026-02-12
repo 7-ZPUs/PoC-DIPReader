@@ -167,7 +167,6 @@ async function reindexAll(documents) {
     if (indexed % logInterval === 0) {
       console.log(`[AI Search] Progress: ${indexed}/${documents.length}`);
     }
-    await new Promise(resolve => setTimeout(resolve, 10));
   }
 
   console.log(`[AI Search] Reindexing complete: ${indexed} documents in memory.`);

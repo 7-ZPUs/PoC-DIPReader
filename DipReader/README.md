@@ -4,7 +4,7 @@ Proof of Concept del Capitolato C3 - "DIP Reader: Applicazione per la gestione e
 
 ---
 
-## Dependencies
+## Dipendenze
 
 ### Tecnologie Principali
 
@@ -25,7 +25,7 @@ Proof of Concept del Capitolato C3 - "DIP Reader: Applicazione per la gestione e
 | `onnxruntime-web` | 1.24.1 | Runtime per modelli ONNX |
 | `fast-xml-parser` | 5.3.3 | Parser XML per metadati DIP |
 
-### Dev Dependencies
+### Dipendenze di sviluppo
 
 - **Angular CLI**: 20.0.6
 - **Electron Builder**: 26.7.0
@@ -95,15 +95,6 @@ Proof of Concept del Capitolato C3 - "DIP Reader: Applicazione per la gestione e
    ```
 
 ---
-
-## Development server
-
-To start a local development server, run:
-
-```bash
-ng serve
-```
-
 ## Development server
 
 ### Modalità Development (solo Angular)
@@ -160,7 +151,7 @@ Build ottimizzata per performance e dimensioni.
 
 ---
 
-## 📦 Deployment (Distribuzione)
+## Deployment
 
 ### Build Applicazione Desktop
 
@@ -238,12 +229,12 @@ Per modificare le piattaforme di output, modifica `package.json`:
 ### Asset Inclusi nel Package
 
 I seguenti file sono automaticamente inclusi nella build:
-- ✅ Applicazione Angular compilata
-- ✅ Main process Electron (`main.js`, `preload.js`)
-- ✅ Database handlers (`db-handler.js`, `indexer-main.js`, `ai-search.js`)
-- ✅ Schema database (`public/schema.sql`)
-- ✅ Modelli AI pre-scaricati (`assets/models/`)
-- ✅ Runtime ONNX WebAssembly (`assets/onnx-wasm/`)
+- Applicazione Angular compilata
+- Main process Electron (`main.js`, `preload.js`)
+- Database handlers (`db-handler.js`, `indexer-main.js`, `ai-search.js`)
+- Schema database (`public/schema.sql`)
+- Modelli AI pre-scaricati (`assets/models/`)
+- Runtime ONNX WebAssembly (`assets/onnx-wasm/`)
 
 ---
 
@@ -282,39 +273,17 @@ unzip -l dist-electron/DipReader-*.AppImage  # Linux
 # oppure apri manualmente il file .exe/.dmg
 ```
 
----
+### Errore all'accelerazione hardware "Schema ... does not have key font-antialiasing"
 
-## Struttura del Progetto
+```bash
+npm run electron:ubuntu
+```
 
-```
-DipReader/
-├── src/                          # Codice sorgente Angular
-│   ├── app/
-│   │   ├── services/             # Servizi Angular
-│   │   │   ├── file.service.ts
-│   │   │   ├── metadata.service.ts
-│   │   │   ├── file-integrity.service.ts
-│   │   │   └── search.service.ts
-│   │   ├── database-electron.service.ts
-│   │   └── ...
-│   └── assets/                   # Asset statici
-│       ├── models/               # Modelli AI (Transformers.js)
-│       └── db/                   # Schema database
-├── main.js                       # Main process Electron
-├── preload.js                    # Preload script (security bridge)
-├── db-handler.js                 # Gestione database SQLite
-├── indexer-main.js               # Indicizzazione DIP
-├── ai-search.js                  # Ricerca semantica AI
-├── public/                       # File pubblici
-│   └── schema.sql                # Schema database SQL
-├── dist/                         # Build Angular (generato)
-├── dist-electron/                # Pacchetti Electron (generato)
-└── package.json                  # Dipendenze e configurazione
-```
 
 ---
 
-## 🔧 Scripts Disponibili
+
+## Scripts Disponibili
 
 | Script | Descrizione |
 |--------|-------------|
@@ -323,100 +292,3 @@ DipReader/
 | `npm test` | Esegui unit test con Vitest |
 | `npm run electron` | Build + avvia Electron (development) |
 | `npm run dist` | Build production + crea pacchetti installabili |
-
----
-
-## 📚 Code Scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
-
-```bash
-ng generate component component-name
-```
-
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
-
-```bash
-ng generate --help
-```
-
----
-
-## 🌐 Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
----
-
-## 📝 Funzionalità Principali
-
-- 🗂️ **Indicizzazione DIP**: Importa e indicizza archivi DIP completi
-- 🔍 **Ricerca Semantica**: Ricerca intelligente basata su AI (Transformers.js)
-- 🗄️ **Database SQLite**: Persistenza locale dei metadati
-- 🔐 **Verifica Integrità**: Controllo hash SHA-256 dei file
-- 📄 **Visualizzazione Metadati**: Esplora metadati XML strutturati
-- 🌳 **Navigazione Gerarchica**: Albero documenti/file navigabile
-- 🔎 **Filtri Avanzati**: Ricerca per metadati specifici
-
----
-
-## 🏗️ Architettura
-
-Per informazioni dettagliate sull'architettura dell'applicazione, consulta:
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Architettura completa a 3 layer
-- [REFACTORING_REPORT.md](REFACTORING_REPORT.md) - Report refactoring servizi
-
-### Pattern Implementati
-
-- **Service Layer Pattern**: Separazione responsabilità tra servizi
-- **Dependency Injection**: Angular DI per gestione dipendenze
-- **IPC Bridge**: Comunicazione sicura Renderer ↔ Main Process
-- **Single Responsibility**: Ogni servizio gestisce un dominio specifico
-
----
-
-## 🚢 Versioning
-
-- **Current Version**: 0.0.0 (PoC)
-- **Branch**: `sql_indexing`
-- **Repository**: [7-ZPUs/PoC-DIPReader](https://github.com/7-ZPUs/PoC-DIPReader)
-
----
-
-## 🤝 Contributing
-
-1. Crea un branch dalla `main`
-2. Fai le tue modifiche
-3. Testa localmente con `npm run electron`
-4. Esegui i test con `npm test`
-5. Crea una Pull Request
-
----
-
-## 📄 License
-
-Proprietario - 7-ZPUs
-
----
-
-## 🔗 Additional Resources
-
-- [Angular CLI Documentation](https://angular.dev/tools/cli)
-- [Electron Documentation](https://www.electronjs.org/docs/latest)
-- [better-sqlite3 Documentation](https://github.com/WiseLibs/better-sqlite3)
-- [Transformers.js Documentation](https://huggingface.co/docs/transformers.js)
-- [Electron Builder Documentation](https://www.electron.build/)
-
----
-
-## 👥 Autori
-
-Sviluppato da **7-ZPUs Team**
-
-Per domande o supporto, apri un'issue nel repository.

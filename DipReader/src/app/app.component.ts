@@ -31,11 +31,10 @@ export class AppComponent implements OnInit {
   isSearching = false;
   integrityStatus: 'none' | 'loading' | 'valid' | 'invalid' | 'error' = 'none';
   integrityVerifiedAt: string | null = null;
-  // -------------------------------------------------
 
   constructor(
     private dipService: DipReaderService,
-    private cdr: ChangeDetectorRef 
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit() {
@@ -43,8 +42,8 @@ export class AppComponent implements OnInit {
       next: (tree) => {
         console.log('AppComponent: Pacchetto caricato, albero ricevuto.', tree);
         this.fileTree = tree;
-        this.loadSearchKeys(); // Carica le chiavi per i filtri
-        this.cdr.detectChanges(); 
+        this.loadSearchKeys();
+        this.cdr.detectChanges();
       },
       error: (err) => {
         console.error('ERRORE GRAVE durante il caricamento del pacchetto:', err);

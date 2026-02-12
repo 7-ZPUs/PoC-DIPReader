@@ -183,6 +183,14 @@ export class DipReaderService {
   }
 
   /**
+   * Ricarica l'albero direttamente dal DB già popolato (senza re-import da XML).
+   */
+  public async refreshTreeFromDb(): Promise<FileNode[]> {
+    await this.dbService.initializeDb();
+    return this.dbService.getTreeFromDb();
+  }
+
+  /**
    * Verifica l'integrità di un file scaricandolo, calcolando l'hash SHA-256
    * e confrontandolo con quello memorizzato nei metadati
    * @param logicalPath Percorso logico del file da verificare

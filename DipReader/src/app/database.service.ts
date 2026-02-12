@@ -5,7 +5,7 @@ import { FileNode } from './dip-reader.service';
 import { FilterManager, Filter } from './filter-manager';
 
 type Sqlite3 = Awaited<ReturnType<typeof sqlite3InitModule>>;
-type DB = InstanceType<Sqlite3['oo1']['DB']>;
+type DB = InstanceType<Sqlite3['oo1']['OpfsDb']>;
 
 @Injectable({ providedIn: 'root' })
 export class DatabaseService {
@@ -45,209 +45,22 @@ export class DatabaseService {
       });
       const oo = sqlite3.oo1;
       this.sqlite3 = sqlite3;
-      this.db = new oo.DB('/dip.sqlite3', 'ct'); // 'c'reate, 't'race
-      console.log('Database aperto:', this.db.filename);
+      if ('opfs' in sqlite3) {
+        this.db = new oo.OpfsDb('/dip.sqlite3');
+        console.log('Database OPFS aperto:', this.db.filename);
+      } else {
+        console.warn('OPFS non disponibile, uso DB in memoria (non persistente)');
+        this.db = new oo.DB('/dip.sqlite3', 'ct');
+      }
 
-      // Creazione tabelle ottimizzate per indicizzazione e ricerca
-      this.db.exec(`
-        -- Configurazione generale
-        CREATE TABLE IF NOT EXISTS config (
-          key TEXT PRIMARY KEY,
-          value TEXT
-        );
-        
-        -- Tabella nodi: struttura gerarchica del pacchetto
-        CREATE TABLE IF NOT EXISTS nodes (
-          logical_path TEXT PRIMARY KEY,
-          parent_path TEXT,
-          name TEXT NOT NULL,
-          type TEXT NOT NULL
-        );
+      const schemaPath = '/database.sql';
+      const schemaResponse = await fetch(schemaPath);
+      if (!schemaResponse.ok) {
+        throw new Error(`Impossibile caricare lo schema SQL da ${schemaPath}: ${schemaResponse.status}`);
+      }
+      const schemaSql = await schemaResponse.text();
 
-        -- Metadati grezzi (JSON) per visualizzazione completa
-        CREATE TABLE IF NOT EXISTS raw_metadata (
-          logical_path TEXT PRIMARY KEY,
-          data TEXT,
-          FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE
-        );
-        
-        -- Metadati indicizzati (Key-Value) per ricerca rapida
-        CREATE TABLE IF NOT EXISTS metadata_attributes (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          logical_path TEXT NOT NULL,
-          key TEXT NOT NULL,
-          value TEXT,
-          FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE
-        );
-        
-        -- Mappatura percorsi fisici
-        CREATE TABLE IF NOT EXISTS physical_paths (
-          logical_path TEXT PRIMARY KEY,
-          physical_path TEXT,
-          FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE
-        );
-        
-        -- Stato integrità file (SHA256+Base64)
-        CREATE TABLE IF NOT EXISTS file_integrity (
-          logical_path TEXT PRIMARY KEY,
-          is_valid INTEGER NOT NULL,
-          calculated_hash TEXT NOT NULL,
-          expected_hash TEXT NOT NULL,
-          verified_at TEXT NOT NULL,
-          FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE
-        );
-
-        -- Layer archivistico
-        CREATE TABLE IF NOT EXISTS archival_process (
-          uuid TEXT PRIMARY KEY
-        );
-
-        CREATE TABLE IF NOT EXISTS document_class (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          class_name TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS aip (
-          uuid TEXT PRIMARY KEY,
-          document_class_id INTEGER,
-          archival_process_uuid TEXT,
-          FOREIGN KEY(document_class_id) REFERENCES document_class(id),
-          FOREIGN KEY(archival_process_uuid) REFERENCES archival_process(uuid)
-        );
-
-        CREATE TABLE IF NOT EXISTS administrative_procedure (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          catalog_uri TEXT NOT NULL,
-          title TEXT NOT NULL,
-          subject_of_interest TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS document_aggregation (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          procedure_id INTEGER,
-          type TEXT NOT NULL,
-          FOREIGN KEY(procedure_id) REFERENCES administrative_procedure(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS document (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          root_path TEXT NOT NULL,
-          aip_uuid TEXT NOT NULL,
-          aggregation_id INTEGER,
-          FOREIGN KEY(aip_uuid) REFERENCES aip(uuid),
-          FOREIGN KEY(aggregation_id) REFERENCES document_aggregation(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS file (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          relative_path TEXT NOT NULL,
-          is_main INTEGER NOT NULL DEFAULT 0,
-          document_id INTEGER,
-          FOREIGN KEY(document_id) REFERENCES document(id)
-        );
-
-        -- Mapping nodo -> documento per unire al modello archivistico
-        CREATE TABLE IF NOT EXISTS node_document (
-          logical_path TEXT PRIMARY KEY,
-          document_id INTEGER NOT NULL,
-          FOREIGN KEY(logical_path) REFERENCES nodes(logical_path) ON DELETE CASCADE,
-          FOREIGN KEY(document_id) REFERENCES document(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS metadata (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          meta_key TEXT NOT NULL,
-          meta_value TEXT,
-          meta_type TEXT NOT NULL DEFAULT 'string' CHECK(meta_type IN ('string','number','date')),
-          document_id INTEGER,
-          aip_uuid TEXT,
-          archival_process_uuid TEXT,
-          FOREIGN KEY(document_id) REFERENCES document(id),
-          FOREIGN KEY(aip_uuid) REFERENCES aip(uuid),
-          FOREIGN KEY(archival_process_uuid) REFERENCES archival_process(uuid)
-        );
-
-        CREATE TABLE IF NOT EXISTS subject (
-          id INTEGER PRIMARY KEY AUTOINCREMENT
-        );
-
-        CREATE TABLE IF NOT EXISTS subject_pf (
-          subject_id INTEGER PRIMARY KEY,
-          cf TEXT UNIQUE,
-          first_name TEXT NOT NULL,
-          last_name TEXT NOT NULL,
-          digital_addresses TEXT,
-          FOREIGN KEY(subject_id) REFERENCES subject(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS subject_pg (
-          subject_id INTEGER PRIMARY KEY,
-          p_iva TEXT UNIQUE,
-          company_name TEXT NOT NULL,
-          office_name TEXT,
-          digital_addresses TEXT,
-          FOREIGN KEY(subject_id) REFERENCES subject(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS subject_pai (
-          subject_id INTEGER PRIMARY KEY,
-          administration_ipa_name TEXT NOT NULL,
-          administration_aoo_name TEXT NOT NULL,
-          administration_uor_name TEXT NOT NULL,
-          digital_addresses TEXT,
-          FOREIGN KEY(subject_id) REFERENCES subject(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS subject_pae (
-          subject_id INTEGER PRIMARY KEY,
-          administration_name TEXT NOT NULL UNIQUE,
-          office_name TEXT,
-          digital_addresses TEXT,
-          FOREIGN KEY(subject_id) REFERENCES subject(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS subject_as (
-          subject_id INTEGER PRIMARY KEY,
-          first_name TEXT,
-          last_name TEXT,
-          cf TEXT UNIQUE,
-          organization_name TEXT NOT NULL,
-          office_name TEXT NOT NULL,
-          digital_addresses TEXT,
-          FOREIGN KEY(subject_id) REFERENCES subject(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS subject_sq (
-          subject_id INTEGER PRIMARY KEY,
-          system_name TEXT NOT NULL,
-          FOREIGN KEY(subject_id) REFERENCES subject(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS document_subject_association (
-          document_id INTEGER NOT NULL,
-          subject_id INTEGER NOT NULL,
-          PRIMARY KEY (document_id, subject_id),
-          FOREIGN KEY(document_id) REFERENCES document(id),
-          FOREIGN KEY(subject_id) REFERENCES subject(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS phase (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          type TEXT NOT NULL,
-          start_date TEXT NOT NULL,
-          end_date TEXT,
-          administrative_procedure_id INTEGER,
-          FOREIGN KEY(administrative_procedure_id) REFERENCES administrative_procedure(id)
-        );
-
-        -- Indici per performance
-        CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_path);
-        CREATE INDEX IF NOT EXISTS idx_meta_attr_key ON metadata_attributes(key);
-        CREATE INDEX IF NOT EXISTS idx_meta_attr_val ON metadata_attributes(value);
-        CREATE INDEX IF NOT EXISTS idx_metadata_key ON metadata(meta_key);
-        CREATE INDEX IF NOT EXISTS idx_file_document ON file(document_id);
-        CREATE INDEX IF NOT EXISTS idx_node_document_doc ON node_document(document_id);
-      `);
+      this.db.exec(schemaSql);
       this.dbReady = true;
       console.log('Tabelle SQLite create/verificate (Nuova Struttura).');
     } catch (err: any) {
@@ -273,32 +86,74 @@ export class DatabaseService {
 
     console.log('Popolamento database in corso...');
     db.transaction(() => {
-      // Pulisce le tabelle
-      db.exec('DELETE FROM metadata_attributes; DELETE FROM raw_metadata; DELETE FROM physical_paths; DELETE FROM nodes; DELETE FROM config;');
+      // Pulisce le tabelle (ordine per rispetto FK soft)
+      db.exec([
+        'DELETE FROM metadata',
+        'DELETE FROM node_document',
+        'DELETE FROM file',
+        'DELETE FROM document',
+        'DELETE FROM aip',
+        'DELETE FROM document_class',
+        'DELETE FROM archival_process',
+        'DELETE FROM metadata_attributes',
+        'DELETE FROM raw_metadata',
+        'DELETE FROM physical_paths',
+        'DELETE FROM nodes',
+        'DELETE FROM config'
+      ].join('; '));
 
-      // Statements preparati
+      // Statements preparati layer tecnico
       const insertNode = db.prepare('INSERT INTO nodes (logical_path, parent_path, name, type) VALUES (?, ?, ?, ?)');
       const insertRawMeta = db.prepare('INSERT INTO raw_metadata (logical_path, data) VALUES (?, ?)');
       const insertMetaAttr = db.prepare('INSERT INTO metadata_attributes (logical_path, key, value) VALUES (?, ?, ?)');
       const insertPhys = db.prepare('INSERT INTO physical_paths (logical_path, physical_path) VALUES (?, ?)');
 
+      // Statements preparati layer archivistico
+      const insertArchivalProcess = db.prepare('INSERT OR IGNORE INTO archival_process (uuid) VALUES (?)');
+      const insertDocumentClass = db.prepare('INSERT OR IGNORE INTO document_class (class_name) VALUES (?)');
+      const insertAip = db.prepare('INSERT OR IGNORE INTO aip (uuid, document_class_id, archival_process_uuid) VALUES (?, ?, ?)');
+      const insertDocument = db.prepare('INSERT OR IGNORE INTO document (root_path, aip_uuid) VALUES (?, ?)');
+      const insertFile = db.prepare('INSERT OR IGNORE INTO file (relative_path, is_main, document_id) VALUES (?, ?, ?)');
+      const insertNodeDocument = db.prepare('INSERT OR REPLACE INTO node_document (logical_path, document_id) VALUES (?, ?)');
+      
+      // Mappe per tracciare gli ID creati
+      const documentClassMap: { [key: string]: number } = {};
+      const documentMap: { [key: string]: number } = {};
+      let nextDocumentClassId = 1;
+      let nextDocumentId = 1;
+
       try {
+        // ═════════════════════════════════════════════════════════════════════
+        // LOOP PRINCIPALE: Popola sia layer TECNICO che layer ARCHIVISTICO
+        // ═════════════════════════════════════════════════════════════════════
+        // Per ogni file nel DIP:
+        // 1. LAYER TECNICO: Inserisce in nodes, raw_metadata, metadata_attributes
+        //    → Serve per UI (albero, ricerca, visualizzazione)
+        // 2. LAYER ARCHIVISTICO: Estrae info da metadati e popola aip, document, file
+        //    → Serve per modello archivistico (AIP, classi, procedimenti, soggetti)
+        // 3. PONTE: Collega logical_path (tecnico) a document_id (archivistico)
+        //    → Via tabella node_document
+        // ═════════════════════════════════════════════════════════════════════
+        
         logicalPaths.forEach(path => {
           const parts = path.split('/');
           const parentPath = parts.slice(0, -1).join('/');
           let name = parts[parts.length - 1];
 
-          // Gestione Metadati
+          // ──────────────────────────────────────────────────────────────────
+          // LAYER TECNICO: Gestione Metadati per UI
+          // ──────────────────────────────────────────────────────────────────
           const metadata = metadataMap[path];
+          const flatForArchive = this.flattenMetadata(metadata);
           if (metadata) {
             // 1. Cerca nome visualizzato (es. NomeDelDocumento)
             const docName = this.findValueByKey(metadata, 'NomeDelDocumento');
             if (docName) name = docName;
 
-            // 2. Inserisce JSON grezzo
+            // 2. Inserisce JSON grezzo per visualizzazione completa
             insertRawMeta.bind([path, JSON.stringify(metadata)]).stepReset();
 
-            // 3. Inserisce attributi indicizzati (appiattiti)
+            // 3. Inserisce attributi indicizzati (appiattiti) per ricerca full-text
             const attributes = this.flattenMetadata(metadata);
             attributes.forEach(attr => {
               // Filtra valori troppo lunghi se necessario
@@ -308,7 +163,51 @@ export class DatabaseService {
             });
           }
           
+          // Inserisci nodo nell'albero tecnico
           insertNode.bind([path, parentPath, name, 'file']).stepReset();
+
+          // ──────────────────────────────────────────────────────────────────
+          // LAYER ARCHIVISTICO: Popolamento modello documentale
+          // ──────────────────────────────────────────────────────────────────
+          const archiveInfo = this.extractArchiveInfo(flatForArchive, logicalPaths[0] || '');
+          if (archiveInfo?.aip_uuid) {
+            // 1. Processo Archivistico (opzionale)
+            if (archiveInfo.archival_process_uuid) {
+              insertArchivalProcess.bind([archiveInfo.archival_process_uuid]).stepReset();
+            }
+
+            // 2. Classe Documentale
+            let documentClassId = 0;
+            if (archiveInfo.document_class_name) {
+              if (!documentClassMap[archiveInfo.document_class_name]) {
+                documentClassMap[archiveInfo.document_class_name] = nextDocumentClassId++;
+              }
+              documentClassId = documentClassMap[archiveInfo.document_class_name];
+              insertDocumentClass.bind([archiveInfo.document_class_name]).stepReset();
+            }
+
+            // 3. AIP (Archival Information Package)
+            insertAip.bind([archiveInfo.aip_uuid, documentClassId || null, archiveInfo.archival_process_uuid || null]).stepReset();
+
+            // 4. Document (entità documentale)
+            const rootPath = archiveInfo.root_path || parentPath || path;
+            const docKey = `${rootPath}::${archiveInfo.aip_uuid}`;
+            if (!documentMap[docKey]) {
+              documentMap[docKey] = nextDocumentId++;
+            }
+            insertDocument.bind([rootPath, archiveInfo.aip_uuid]).stepReset();
+            const documentId = documentMap[docKey];
+
+            if (documentId) {
+              // 5. File mapping (percorso relativo + flag is_main)
+              const relativePath = physicalPathMap[path] || path;
+              const isMain = this.isMainFile(metadata);
+              insertFile.bind([relativePath, isMain ? 1 : 0, documentId]).stepReset();
+
+              // 6. PONTE: Collega logical_path (tecnico) a document_id (archivistico)
+              insertNodeDocument.bind([path, documentId]).stepReset();
+            }
+          }
         });
         Object.entries(physicalPathMap).forEach(([path, physPath]) => {
           insertPhys.bind([path, physPath]).stepReset();
@@ -318,6 +217,12 @@ export class DatabaseService {
         insertRawMeta.finalize();
         insertMetaAttr.finalize();
         insertPhys.finalize();
+        insertArchivalProcess.finalize();
+        insertDocumentClass.finalize();
+        insertAip.finalize();
+        insertDocument.finalize();
+        insertFile.finalize();
+        insertNodeDocument.finalize();
       }
 
       // Aggiorna la versione
@@ -480,10 +385,14 @@ export class DatabaseService {
    * 4. Restituisce solo i file che matchano TUTTI i criteri di filtro
    */
   async searchDocuments(nameQuery: string, filters: Filter[]): Promise<FileNode[]> {
+    const startTime = performance.now();
+    console.log('[PERFORMANCE] Inizio ricerca - Query:', nameQuery, 'Filtri:', filters.length);
+    
     const db = this.db;
     if (!db) return [];
 
     // Step 1: Trova i file per nome
+    const sqlStartTime = performance.now();
     let sql = "SELECT logical_path, name FROM nodes WHERE type = 'file'";
     const params: string[] = [];
 
@@ -501,9 +410,11 @@ export class DatabaseService {
       returnValue: 'resultRows'
     }) as { logical_path: string, name: string }[];
 
-    console.log('[DatabaseService] File trovati per nome:', rows.length);
+    const sqlEndTime = performance.now();
+    console.log(`[PERFORMANCE] Query SQL completata in ${(sqlEndTime - sqlStartTime).toFixed(2)}ms - File trovati:`, rows.length);
 
     // Step 2 & 3: Applica i filtri globali usando FilterManager
+    const filterStartTime = performance.now();
     const filteredNodes: FileNode[] = [];
 
     // Espandi i filtri consolidati
@@ -523,13 +434,22 @@ export class DatabaseService {
       return filter;
     });
 
+    let metadataFetchTime = 0;
+    let flattenTime = 0;
+    let filterCheckTime = 0;
+    
     for (const row of rows) {
+      const fetchStart = performance.now();
       const metadata = await this.getMetadataFromDb(row.logical_path);
+      metadataFetchTime += performance.now() - fetchStart;
       
       // Usa FilterManager per controllare se i metadati matchano i filtri
+      const flattenStart = performance.now();
       const flatMetadata = FilterManager.flattenMetadata(metadata);
+      flattenTime += performance.now() - flattenStart;
       
       // Applica i filtri con OR logic per quelli espansi
+      const filterCheckStart = performance.now();
       let matchesAllFilters = true;
       for (const filter of expandedFilters) {
         const expandedFilter = filter as any;
@@ -561,6 +481,8 @@ export class DatabaseService {
         matchesAllFilters = false;
       }
 
+      filterCheckTime += performance.now() - filterCheckStart;
+      
       if (matchesAllFilters || filters.length === 0) {
         filteredNodes.push({
           name: row.name,
@@ -571,10 +493,25 @@ export class DatabaseService {
       }
     }
 
-    console.log('[DatabaseService] Risultati dopo filtri globali:', filteredNodes.length);
+    const filterEndTime = performance.now();
+    const totalFilterTime = filterEndTime - filterStartTime;
+    console.log(`[PERFORMANCE] Filtraggio completato in ${totalFilterTime.toFixed(2)}ms:`);
+    console.log(`  - Recupero metadati: ${metadataFetchTime.toFixed(2)}ms (${(metadataFetchTime/rows.length).toFixed(2)}ms/file)`);
+    console.log(`  - Flatten metadati: ${flattenTime.toFixed(2)}ms (${(flattenTime/rows.length).toFixed(2)}ms/file)`);
+    console.log(`  - Check filtri: ${filterCheckTime.toFixed(2)}ms (${(filterCheckTime/rows.length).toFixed(2)}ms/file)`);
+    console.log(`  - Risultati filtrati: ${filteredNodes.length}/${rows.length} file`);
 
     // Ricostruisce l'albero parziale con i risultati filtrati
-    return this.buildTree(filteredNodes.map(n => ({ logical_path: n.path, name: n.name })), true);
+    const treeStartTime = performance.now();
+    const tree = this.buildTree(filteredNodes.map(n => ({ logical_path: n.path, name: n.name })), true);
+    const treeEndTime = performance.now();
+    
+    const totalTime = treeEndTime - startTime;
+    console.log(`[PERFORMANCE] Albero ricostruito in ${(treeEndTime - treeStartTime).toFixed(2)}ms`);
+    console.log(`[PERFORMANCE] TOTALE ricerca completata in ${totalTime.toFixed(2)}ms`);
+    console.log(`[PERFORMANCE] Breakdown: SQL=${((sqlEndTime-sqlStartTime)/totalTime*100).toFixed(1)}%, Filtri=${(totalFilterTime/totalTime*100).toFixed(1)}%, Tree=${((treeEndTime-treeStartTime)/totalTime*100).toFixed(1)}%`);
+    
+    return tree;
   }
 
   /**
@@ -662,6 +599,168 @@ export class DatabaseService {
       }
     }
     return results;
+  }
+
+  /**
+   * Estrae informazioni archivistiche complete dai metadati flatten.
+   * Questo metodo raccoglie tutti i dati necessari per popolare il layer archivistico:
+   * - AIP UUID e processo archivistico
+   * - Classe documentale
+   * - Informazioni su procedimento amministrativo
+   * - Tipo di aggregazione documentale
+   * - Soggetti coinvolti (persone fisiche/giuridiche, PA, etc.)
+   * 
+   * @param flatMetadata Metadati appiattiti in formato key-value
+   * @param defaultRoot Percorso di fallback se non trovato nei metadati
+   * @returns Oggetto con tutte le informazioni archivistiche, o null se manca l'AIP UUID
+   */
+  private extractArchiveInfo(flatMetadata: { key: string; value: string }[], defaultRoot: string) {
+    const aip_uuid = this.extractAipUuid(flatMetadata);
+    const archival_process_uuid = this.extractProcessUuid(flatMetadata);
+    const document_class_name = this.extractDocumentClass(flatMetadata);
+    const root_path = this.extractRootPath(flatMetadata, defaultRoot);
+    const procedure_info = this.extractProcedureInfo(flatMetadata);
+    const aggregation_type = this.extractAggregationType(flatMetadata);
+    const subjects = this.extractSubjects(flatMetadata);
+
+    if (!aip_uuid) {
+      console.warn('[extractArchiveInfo] AIP UUID non trovato, skip popolamento archivistico per:', defaultRoot);
+      return null;
+    }
+    
+    return { 
+      aip_uuid, 
+      archival_process_uuid, 
+      document_class_name, 
+      root_path,
+      procedure_info,
+      aggregation_type,
+      subjects
+    };
+  }
+
+  private extractAipUuid(flatMetadata: { key: string; value: string }[]): string | null {
+    const uuid = flatMetadata.find(m => /aip(id|_uuid)?/i.test(m.key) && this.isUuid(m.value))?.value;
+    if (uuid) return uuid;
+    return flatMetadata.find(m => this.isUuid(m.value))?.value || null;
+  }
+
+  private extractProcessUuid(flatMetadata: { key: string; value: string }[]): string | null {
+    const match = flatMetadata.find(m => /process(uuid|o)?/i.test(m.key) && this.isUuid(m.value));
+    return match?.value || null;
+  }
+
+  private extractDocumentClass(flatMetadata: { key: string; value: string }[]): string | null {
+    const match = flatMetadata.find(m => /(classe|documentclass)/i.test(m.key) && m.value);
+    return match?.value || null;
+  }
+
+  private extractRootPath(flatMetadata: { key: string; value: string }[], fallback: string): string {
+    const match = flatMetadata.find(m => /document(path|root)/i.test(m.key) && m.value);
+    return match?.value || fallback;
+  }
+
+  /**
+   * Estrae informazioni sul procedimento amministrativo dai metadati.
+   * @returns Oggetto con URI, title, subject_of_interest, o null se non trovato
+   */
+  private extractProcedureInfo(flatMetadata: { key: string; value: string }[]): { 
+    catalog_uri?: string; 
+    title?: string; 
+    subject_of_interest?: string;
+  } | null {
+    const catalogUri = flatMetadata.find(m => 
+      /(catalog|catalogo)(uri|link|url)/i.test(m.key) && m.value
+    )?.value;
+    
+    const title = flatMetadata.find(m => 
+      /(procedure|procedimento)(title|titolo|name|nome)/i.test(m.key) && m.value
+    )?.value;
+    
+    const subject = flatMetadata.find(m => 
+      /(subject|oggetto|interesse)/i.test(m.key) && m.value
+    )?.value;
+
+    if (catalogUri || title || subject) {
+      return {
+        catalog_uri: catalogUri,
+        title: title,
+        subject_of_interest: subject
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Estrae il tipo di aggregazione documentale dai metadati.
+   * @returns Tipo aggregazione (es. 'fascicolo', 'serie', 'dossier') o null
+   */
+  private extractAggregationType(flatMetadata: { key: string; value: string }[]): string | null {
+    const match = flatMetadata.find(m => 
+      /(aggregation|aggregazione)(type|tipo)/i.test(m.key) && m.value
+    );
+    return match?.value || null;
+  }
+
+  /**
+   * Estrae informazioni sui soggetti (persone fisiche, giuridiche, etc.) dai metadati.
+   * @returns Array di soggetti con tipo e dati identificativi
+   */
+  private extractSubjects(flatMetadata: { key: string; value: string }[]): Array<{
+    type: 'PF' | 'PG' | 'PAI' | 'PAE' | 'AS' | 'SQ';
+    identifier?: string;
+    name?: string;
+    role?: string;
+  }> {
+    const subjects: Array<any> = [];
+    
+    // Pattern per diversi tipi di soggetti
+    const patterns = [
+      { type: 'PF' as const, regex: /(person|persona)(fisica|naturale)/i },
+      { type: 'PG' as const, regex: /(person|persona)(giuridica|legal)/i },
+      { type: 'PAI' as const, regex: /(pubblica|amministrazione)(interna|internal)/i },
+      { type: 'PAE' as const, regex: /(pubblica|amministrazione)(esterna|external)/i },
+      { type: 'AS' as const, regex: /(altro|other)(soggetto|subject)/i },
+      { type: 'SQ' as const, regex: /(soggetto|subject)(qualificato|qualified)/i }
+    ];
+
+    patterns.forEach(pattern => {
+      const matches = flatMetadata.filter(m => pattern.regex.test(m.key));
+      if (matches.length > 0) {
+        // Cerca identificatore, nome, ruolo associati
+        const identifier = flatMetadata.find(m => 
+          new RegExp(`${pattern.type.toLowerCase()}.*id`, 'i').test(m.key)
+        )?.value;
+        
+        const name = flatMetadata.find(m => 
+          new RegExp(`${pattern.type.toLowerCase()}.*(name|nome)`, 'i').test(m.key)
+        )?.value;
+        
+        const role = flatMetadata.find(m => 
+          new RegExp(`${pattern.type.toLowerCase()}.*(role|ruolo)`, 'i').test(m.key)
+        )?.value;
+
+        if (identifier || name) {
+          subjects.push({
+            type: pattern.type,
+            identifier,
+            name,
+            role
+          });
+        }
+      }
+    });
+
+    return subjects;
+  }
+
+  private isMainFile(metadata: any): boolean {
+    const flat = this.flattenMetadata(metadata || {});
+    return flat.some(m => /isprimary|primary/i.test(m.key) && /true|1/i.test(m.value));
+  }
+
+  private isUuid(value: string): boolean {
+    return /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i.test(value || '');
   }
 
   /**
@@ -765,5 +864,192 @@ export class DatabaseService {
     }>
   > {
     return await this.getGroupedFilterKeys();
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // API LAYER ARCHIVISTICO (Fase 4)
+  // ═════════════════════════════════════════════════════════════════════════
+  // Metodi pubblici per interrogare il modello archivistico.
+  // Permettono di navigare la struttura AIP → Document → File
+  // e recuperare informazioni su classi, processi, procedimenti, soggetti.
+  // ═════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Recupera informazioni sul documento archivistico associato a un logical_path.
+   * @param logicalPath Percorso logico del file nell'albero tecnico
+   * @returns Info documento (ID, AIP UUID, classe, root path) o null se non trovato
+   */
+  async getDocumentInfo(logicalPath: string): Promise<{ 
+    documentId: number;
+    aipUuid: string;
+    documentClassName: string | null;
+    rootPath: string;
+  } | null> {
+    const db = this.db;
+    if (!db) return null;
+
+    const row = db.exec({
+      sql: `
+        SELECT 
+          d.id as documentId,
+          d.aip_uuid as aipUuid,
+          d.root_path as rootPath,
+          dc.class_name as documentClassName
+        FROM node_document nd
+        JOIN document d ON nd.document_id = d.id
+        JOIN aip a ON d.aip_uuid = a.uuid
+        LEFT JOIN document_class dc ON a.document_class_id = dc.id
+        WHERE nd.logical_path = ?
+      `,
+      bind: [logicalPath],
+      rowMode: 'object',
+      returnValue: 'resultRows'
+    }) as Array<{ documentId: number; aipUuid: string; rootPath: string; documentClassName: string | null }>;
+
+    return row[0] || null;
+  }
+
+  /**
+   * Recupera informazioni sull'AIP (Archival Information Package).
+   * @param aipUuid UUID dell'AIP
+   * @returns Info AIP (UUID, classe documentale, processo) o null se non trovato
+   */
+  async getAipInfo(aipUuid: string): Promise<{
+    uuid: string;
+    documentClassName: string | null;
+    archivalProcessUuid: string | null;
+  } | null> {
+    const db = this.db;
+    if (!db) return null;
+
+    const row = db.exec({
+      sql: `
+        SELECT 
+          a.uuid,
+          dc.class_name as documentClassName,
+          a.archival_process_uuid as archivalProcessUuid
+        FROM aip a
+        LEFT JOIN document_class dc ON a.document_class_id = dc.id
+        WHERE a.uuid = ?
+      `,
+      bind: [aipUuid],
+      rowMode: 'object',
+      returnValue: 'resultRows'
+    }) as Array<{ uuid: string; documentClassName: string | null; archivalProcessUuid: string | null }>;
+
+    return row[0] || null;
+  }
+
+  /**
+   * Recupera tutti i documenti di un'AIP specifica.
+   * @param aipUuid UUID dell'AIP
+   * @returns Array di documenti con ID e root_path
+   */
+  async getDocumentsByAip(aipUuid: string): Promise<Array<{ id: number; rootPath: string }>> {
+    const db = this.db;
+    if (!db) return [];
+
+    const rows = db.exec({
+      sql: `
+        SELECT id, root_path as rootPath
+        FROM document
+        WHERE aip_uuid = ?
+      `,
+      bind: [aipUuid],
+      rowMode: 'object',
+      returnValue: 'resultRows'
+    }) as Array<{ id: number; rootPath: string }>;
+
+    return rows;
+  }
+
+  /**
+   * Recupera tutti i file di un documento specifico.
+   * @param documentId ID del documento
+   * @returns Array di file con percorso relativo e flag is_main
+   */
+  async getFilesByDocument(documentId: number): Promise<Array<{ relativePath: string; isMain: boolean }>> {
+    const db = this.db;
+    if (!db) return [];
+
+    const rows = db.exec({
+      sql: `
+        SELECT relative_path as relativePath, is_main as isMain
+        FROM file
+        WHERE document_id = ?
+      `,
+      bind: [documentId],
+      rowMode: 'object',
+      returnValue: 'resultRows'
+    }) as Array<{ relativePath: string; isMain: number }>;
+
+    return rows.map(r => ({ relativePath: r.relativePath, isMain: r.isMain === 1 }));
+  }
+
+  /**
+   * Recupera tutte le classi documentali presenti nel database.
+   * @returns Array di classi con ID e nome
+   */
+  async getAllDocumentClasses(): Promise<Array<{ id: number; className: string }>> {
+    const db = this.db;
+    if (!db) return [];
+
+    const rows = db.exec({
+      sql: 'SELECT id, class_name as className FROM document_class ORDER BY class_name',
+      rowMode: 'object',
+      returnValue: 'resultRows'
+    }) as Array<{ id: number; className: string }>;
+
+    return rows;
+  }
+
+  /**
+   * Conta i documenti per ogni classe documentale.
+   * @returns Array con nome classe e conteggio
+   */
+  async getDocumentCountByClass(): Promise<Array<{ className: string; count: number }>> {
+    const db = this.db;
+    if (!db) return [];
+
+    const rows = db.exec({
+      sql: `
+        SELECT 
+          dc.class_name as className,
+          COUNT(DISTINCT d.id) as count
+        FROM document_class dc
+        JOIN aip a ON dc.id = a.document_class_id
+        JOIN document d ON a.uuid = d.aip_uuid
+        GROUP BY dc.class_name
+        ORDER BY count DESC
+      `,
+      rowMode: 'object',
+      returnValue: 'resultRows'
+    }) as Array<{ className: string; count: number }>;
+
+    return rows;
+  }
+
+  /**
+   * Verifica se un file è il file principale di un documento.
+   * @param logicalPath Percorso logico del file
+   * @returns true se è il file principale, false altrimenti
+   */
+  async isFilePrimary(logicalPath: string): Promise<boolean> {
+    const db = this.db;
+    if (!db) return false;
+
+    const result = db.exec({
+      sql: `
+        SELECT f.is_main
+        FROM node_document nd
+        JOIN file f ON nd.document_id = f.document_id
+        WHERE nd.logical_path = ?
+      `,
+      bind: [logicalPath],
+      rowMode: 'object',
+      returnValue: 'resultRows'
+    }) as Array<{ is_main: number }>;
+
+    return result[0]?.is_main === 1;
   }
 }

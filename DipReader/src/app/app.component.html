@@ -64,7 +64,9 @@
           </div>
           <div style="font-size: 0.85em; color: #666; margin-left: 28px;">
             <div><strong>AiP:</strong> {{ res.aipName }}</div>
-            <div *ngIf="res.metadata" style="margin-top: 2px;">{{ res.metadata }}</div>
+            <div *ngIf="res.metadata && getMetadataPreview(res.metadata)" style="margin-top: 2px;">
+              {{ getMetadataPreview(res.metadata) }}
+            </div>
           </div>
         </div>
 

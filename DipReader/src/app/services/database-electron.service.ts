@@ -68,11 +68,6 @@ declare global {
  *   * FileService: for file operations
  *   * FileIntegrityService: for integrity checks
  * 
- * DEPRECATED METHODS:
- * - searchSemantic(): Use SearchService.searchSemantic()
- * - getAvailableMetadataKeys(): Use SearchService.loadAvailableFilterKeys()
- * - findValueByKey(): Use MetadataService.findValueByKey()
- * 
  * Communicates with the main process for all database operations
  */
 @Injectable({ providedIn: 'root' })
@@ -495,57 +490,5 @@ export class DatabaseService {
       expanded: false,
       children: []
     }));
-  }
-
-  /**
-   * @deprecated Use SearchService.getDocumentDetailsByIds() instead
-   * Document enrichment logic has been moved to SearchService for better separation of concerns
-   */
-  async getDocumentsByIds(ids: number[]): Promise<any[]> {
-    console.warn('DatabaseService.getDocumentsByIds is deprecated. Use SearchService.getDocumentDetailsByIds instead.');
-    if (!ids || ids.length === 0) return [];
-
-    const placeholders = ids.map(() => '?').join(',');
-
-    // Recupera documenti con AiP e metadati principali
-    const sql = `
-      SELECT 
-        d.id,
-        d.root_path,
-        d.aip_uuid,
-        a.root_path as aip_name,
-        GROUP_CONCAT(
-          CASE WHEN m.meta_key IN ('Oggetto', 'Descrizione', 'Titolo') 
-          THEN m.meta_key || ': ' || m.meta_value 
-          END, 
-          ' | '
-        ) as metadata_text
-      FROM document d
-      LEFT JOIN aip a ON d.aip_uuid = a.uuid
-      LEFT JOIN metadata m ON d.id = m.document_id
-      WHERE d.id IN (${placeholders})
-      GROUP BY d.id
-    `;
-
-    const rows = await this.executeQuery(sql, ids);
-
-    return rows.map((row: any) => ({
-      documentId: row.id,
-      name: row.root_path || `Document ${row.id}`,
-      aipName: row.aip_name || 'Unknown AiP',
-      metadata: row.metadata_text || 'No metadata',
-      type: 'document',
-      expanded: false,
-      children: []
-    }));
-  }
-
-  /**
-   * @deprecated Use MetadataService methods instead
-   * Metadata manipulation logic has been moved to MetadataService
-   */
-  findValueByKey(metadata: Record<string, any>, key: string): string | null {
-    console.warn('DatabaseService.findValueByKey is deprecated. Use MetadataService instead.');
-    return metadata[key] || null;
   }
 }

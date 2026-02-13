@@ -53,7 +53,7 @@ async function initialize() {
     if (!fs.existsSync(modelsPath)) {
         console.error(`[AI Search] ERRORE GRAVE: Cartella modelli mancante: ${modelsPath}`);
     }
-    embedder = await pipeline('feature-extraction', 'Xenova/ paraphrase-multilingual-MiniLM-L12-v2', {
+    embedder = await pipeline('feature-extraction', 'Xenova/paraphrase-multilingual-MiniLM-L12-v2', {
       quantized: true,
       local_files_only: true,
     });

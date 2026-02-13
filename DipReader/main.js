@@ -92,7 +92,10 @@ async function generateSemanticEmbeddings(db) {
             GROUP BY d.id
         `);
         
-        console.log(`[Semantic] Processing ${docs.length} documents...`);
+        console.log(`[Semantic] Processing ${docs.length} documents with CategoriaProdotto metadata`);
+        if (docs.length > 0) {
+            console.log(`[Semantic] First 3 docs to index:`, docs.slice(0, 3).map(d => `ID=${d.id}, name=${d.name}, text="${d.combined_text}"`));
+        }
         
         let indexed = 0;
         for (const doc of docs) {
@@ -112,9 +115,9 @@ async function generateSemanticEmbeddings(db) {
                     
                     indexed++;
                     
-                    // Log progress every 100 documents
-                    if (indexed % 100 === 0) {
-                        console.log(`[Semantic] Indexed ${indexed}/${docs.length} documents...`);
+                    // Log first few and every 100th document
+                    if (indexed <= 3 || indexed % 100 === 0) {
+                        console.log(`[Semantic] Indexed doc ${doc.id} (${indexed}/${docs.length}): "${text.substring(0, 60)}..."`);
                     }
                 } catch (error) {
                     console.error(`[Semantic] Error indexing document ${doc.id}:`, error);

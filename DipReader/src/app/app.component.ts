@@ -278,55 +278,89 @@ export class AppComponent implements OnInit {
     return Array.isArray(fileInfo) ? fileInfo : [fileInfo];
   }
 
-  // app.component.ts
-
-async onTestSemanticSearch() {
-  if (!this.semanticQuery.trim()) return;
-  
-  this.isCalculatingVector = true;
-  this.generatedVector = null;
-  this.semanticResults = []; // Pulisci i risultati precedenti
-
-  try {
-    console.log('1. Richiesta embedding...');
-    const vector = await this.searchService.getEmbeddingDebug(this.semanticQuery);
+  async onTestSemanticSearch() {
+    if (!this.semanticQuery.trim()) return;
     
-    console.log('2. Embedding ricevuto, lunghezza:', vector.length);
-    this.generatedVector = vector;
+    this.isCalculatingVector = true;
+    this.generatedVector = null;
+    this.semanticResults = [];
 
-    console.log('3. Esecuzione ricerca...');
-    const rawResults = await this.searchService.searchSemantic(vector);
-    
-    if (rawResults.length === 0) {
-      this.isCalculatingVector = false;
-      return;
-    }
+    try {
+      // Generate embedding
+      const vector = await this.searchService.getEmbeddingDebug(this.semanticQuery);
+      this.generatedVector = vector;
 
-    const ids = rawResults.map(r => r.id);
+      // Search with embedding
+      const rawResults = await this.searchService.searchSemantic(vector);
+      
+      console.log(`[Semantic Search] Received ${rawResults.length} results from AI search`);
+      if (rawResults.length > 0) {
+        console.log('[Semantic Search] Top 3 results:', rawResults.slice(0, 3));
+      }
+      
+      if (rawResults.length === 0) {
+        return;
+      }
 
-    // Use SearchService instead of DatabaseService (proper service layer)
-    const documentDetails = await this.searchService.getDocumentDetailsByIds(ids);
+      // rawResults contain document IDs from semantic search
+      const documentIds = rawResults.map(r => r.id);
+      console.log('[Semantic Search] Document IDs to fetch:', documentIds);
 
-    console.log('4. Risultati documenti:', documentDetails);
-    this.semanticResults = documentDetails.map(doc => {
-      const match = rawResults.find(r => r.id === doc.fileId);
-      return {
+      // Get document details
+      const { documents } = await this.searchService.getDocumentDetailsByIds(documentIds);
+      
+      console.log(`[Semantic Search] Retrieved ${documents.length} document details`);
+      if (documents.length > 0) {
+        console.log('[Semantic Search] First document:', documents[0]);
+      }
+
+      // Build score map per document
+      const documentScores = new Map<number, number>();
+      rawResults.forEach(result => {
+        documentScores.set(result.id, result.score);
+      });
+
+      // Map scores to documents
+      this.semanticResults = documents.map(doc => ({
         ...doc,
-        score: match ? (match.score * 100).toFixed(1) + '%' : 'N/A'
-      };
-    });
-    this.semanticResults.sort((a, b) => parseFloat(b.score) - parseFloat(a.score));
+        score: ((documentScores.get(doc.documentId) || 0) * 100).toFixed(1) + '%'
+      })).sort((a, b) => parseFloat(b.score) - parseFloat(a.score));
 
-  } catch (e: any) {
-    console.error('ERRORE CRITICO:', e);
-    alert('Errore AI: ' + e.message);
-  } finally {
-    this.isCalculatingVector = false;
-    this.cdr.detectChanges();
+      console.log(`Trovati ${this.semanticResults.length} documenti dalla ricerca semantica`);
+
+    } catch (e: any) {
+      console.error('Errore ricerca semantica:', e);
+      alert('Errore AI: ' + e.message);
+    } finally {
+      this.isCalculatingVector = false;
+      this.cdr.detectChanges();
+    }
   }
-}
 
 onSemanticResultClick(node: any) {
     this.handleNodeClick(node);
 }
+
+  /**
+   * Format metadata object to short preview string
+   * Shows first 2-3 relevant metadata fields
+   */
+  getMetadataPreview(metadata: Record<string, any>): string {
+    if (!metadata || Object.keys(metadata).length === 0) {
+      return '';
+    }
+
+    const priorityKeys = ['Oggetto', 'Titolo', 'Descrizione', 'Tipo', 'Data'];
+    const entries: string[] = [];
+
+    for (const key of priorityKeys) {
+      if (metadata[key] && entries.length < 2) {
+        const value = metadata[key];
+        const shortValue = value.length > 50 ? value.substring(0, 50) + '...' : value;
+        entries.push(`${key}: ${shortValue}`);
+      }
+    }
+
+    return entries.length > 0 ? entries.join(' | ') : '';
+  }
 }

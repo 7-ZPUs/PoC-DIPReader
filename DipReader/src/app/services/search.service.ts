@@ -183,69 +183,83 @@ export class SearchService {
   }
 
   /**
-   * Get document details by IDs with formatted metadata
+   * Get document details by document IDs with formatted metadata
    * Used after semantic search to enrich results with document information
+   * 
+   * @param documentIds - Array of document IDs from semantic search
+   * @returns Object with documents array and ID mapping
    */
-  async getDocumentDetailsByIds(ids: number[]): Promise<any[]> {
-    if (!ids || ids.length === 0) return [];
+  async getDocumentDetailsByIds(documentIds: number[]): Promise<{documents: any[], idMap: Map<number, number>}> {
+    if (!documentIds || documentIds.length === 0) {
+      return { documents: [], idMap: new Map() };
+    }
 
-    const placeholders = ids.map(() => '?').join(',');
+    const placeholders = documentIds.map(() => '?').join(',');
 
-    // Get document basic info
-    const documents = await this.dbService.executeQuery<Array<{
-      file_id: number;
+    // Get document information directly
+    const docs = await this.dbService.executeQuery<Array<{
       document_id: number;
-      file_relative_path: string;
       document_root_path: string;
       aip_uuid: string;
+      aip_name: string;
       class_name: string;
     }>>(`
       SELECT 
-        f.id as file_id,
         d.id as document_id,
-        f.relative_path as file_relative_path,
         d.root_path as document_root_path,
         a.uuid as aip_uuid,
+        a.root_path as aip_name,
         dc.class_name
-      FROM file f
-      JOIN document d ON f.document_id = d.id
+      FROM document d
       JOIN aip a ON d.aip_uuid = a.uuid
       JOIN document_class dc ON a.document_class_id = dc.id
-      WHERE f.id IN (${placeholders})
-    `, ids);
+      WHERE d.id IN (${placeholders})
+    `, documentIds);
 
-    // Enrich with metadata using MetadataService (proper service usage)
-    const enrichedDocs = await Promise.all(documents.map(async (doc) => {
-      // Get all metadata for this file
-      const metadataObj = await this.dbService.executeQuery<Array<{
-        meta_key: string;
-        meta_value: string;
-      }>>(`
-        SELECT meta_key, meta_value
-        FROM metadata
-        WHERE file_id = ? OR (document_id = ? AND file_id IS NULL)
-      `, [doc.file_id, doc.document_id]);
+    // Build document map (1:1 mapping for documents)
+    const documentMap = new Map<number, any>();
+    const idMap = new Map<number, number>();
 
-      // Format metadata as key-value pairs
-      const metadata: Record<string, any> = {};
-      metadataObj.forEach((m: any) => {
-        metadata[m.meta_key] = m.meta_value;
-      });
+    for (const doc of docs) {
+      // Track document ID mapping (identity mapping)
+      idMap.set(doc.document_id, doc.document_id);
 
-      return {
-        fileId: doc.file_id,
-        documentId: doc.document_id,
-        name: doc.file_relative_path.split('/').pop(),
-        type: 'file' as const,
-        expanded: false,
-        children: [],
-        metadata,
-        aipUuid: doc.aip_uuid,
-        className: doc.class_name
-      };
-    }));
+      if (!documentMap.has(doc.document_id)) {
+        // Get document-level metadata
+        const docMetadata = await this.dbService.executeQuery<Array<{
+          meta_key: string;
+          meta_value: string;
+        }>>(`
+          SELECT meta_key, meta_value
+          FROM metadata
+          WHERE document_id = ? AND file_id IS NULL
+        `, [doc.document_id]);
 
-    return enrichedDocs;
+        const metadata: Record<string, any> = {};
+        docMetadata.forEach((m: any) => {
+          metadata[m.meta_key] = m.meta_value;
+        });
+
+        // Create document node (type: 'folder')
+        documentMap.set(doc.document_id, {
+          fileId: null,
+          documentId: doc.document_id,
+          name: doc.document_root_path,
+          type: 'folder' as const,
+          expanded: false,
+          children: [],
+          metadata,
+          aipUuid: doc.aip_uuid,
+          aipName: doc.aip_name,
+          className: doc.class_name
+        });
+      }
+    }
+
+    return {
+      documents: Array.from(documentMap.values()),
+      idMap
+    };
   }
 
   /**

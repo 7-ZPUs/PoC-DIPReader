@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { DatabaseService } from './database-electron.service';
 import { MetadataService } from './metadata.service';
 import { SearchFilter, FilterOptionGroup } from '../models/search-filter';
+import '../types/electron-api.types';
 
 @Injectable({ providedIn: 'root' })
 export class SearchService {

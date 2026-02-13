@@ -1,16 +1,22 @@
 {
   "name": "dip-reader",
   "version": "0.0.0",
-  "main": "main.js",
+  "main": "dist-main/main.js",
   "scripts": {
-    "setup:models": "node download-models.js",
+    "setup:download-models": "tsc -p tsconfig.download.json && node dist-main/download-models.js",
+    "setup:models": "npm run setup:download-models",
     "setup": "npm install && npm run setup:models",
-    "electron": "ng build --base-href / && electron .",
-    "electron:ubuntu": "ng build --base-href / && electron . --disable-gpu --no-sandbox",
-    "electron:ubuntuL": "ng build --base-href / && electron . --ozone-platform=x11",
-    "electron:rebuild": "electron-rebuild -f -w better-sqlite3 && electron-rebuild -f -w onnxruntime-node",
-    "dist": "ng build --configuration production --base-href / && electron-builder",
-    "clean": "rm -rf dist dist-electron node_modules/.vite"
+    "build": "tsc -p tsconfig.main.json && cp schema.sql dist-main/ && cp -r assets dist-main/ && ng build --base-href /",
+    "build:prod": "tsc -p tsconfig.main.json && cp schema.sql dist-main/ && cp -r assets dist-main/ && ng build --configuration production --base-href /",
+    "start": "electron .",
+    "start:ubuntu": "electron . --disable-gpu --no-sandbox",
+    "start:ubuntu-x11": "electron . --ozone-platform=x11",
+    "dev": "npm run build && npm run start",
+    "dev:ubuntu": "npm run build && npm run start:ubuntu",
+    "dev:ubuntu-x11": "npm run build && npm run start:ubuntu-x11",
+    "rebuild": "electron-rebuild -f -w better-sqlite3 && electron-rebuild -f -w onnxruntime-node",
+    "dist": "npm run build:prod && electron-builder",
+    "clean": "rm -rf dist dist-main dist-electron node_modules/.vite"
   },
   "prettier": {
     "printWidth": 100,
@@ -49,6 +55,9 @@
     "@angular/compiler-cli": "^21.0.0",
     "@electron/fuses": "^1.8.0",
     "@electron/rebuild": "^4.0.3",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.10.5",
+    "@types/xmldom": "^0.1.34",
     "electron": "^40.2.1",
     "electron-builder": "^26.7.0",
     "jsdom": "^27.1.0",
@@ -63,11 +72,7 @@
     },
     "files": [
       "dist/DipReader/**/*",
-      "main.js",
-      "preload.js",
-      "db-handler.js",
-      "indexer-main.js",
-      "ai-search.js",
+      "dist-main/**/*",
       "package.json",
       "schema.sql"
     ],

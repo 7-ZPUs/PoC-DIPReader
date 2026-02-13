@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "outDir": "./dist-main",
+    "rootDir": ".",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": [
+    "main.ts",
+    "preload.ts",
+    "db-handler.ts",
+    "indexer-main.ts",
+    "ai-search.ts",
+    "download-models.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dist-main",
+    "dist-electron",
+    "src"
+  ]
+}

@@ -1,7 +1,9 @@
 // ai-search.js - Semantic Search with Transformers.js in Electron Main Process
+// Using sqlite-vss for vector storage and search (no in-memory cache needed)
 const { pipeline, env } = require('@xenova/transformers');
 const path = require('node:path');
 const { app } = require('electron');
+const os = require('node:os');
 
 // ============================================================================
 // 1. CONFIGURATION
@@ -12,18 +14,24 @@ const modelsPath = isDev
   ? path.join(__dirname, 'dist', 'DipReader', 'browser', 'assets', 'models')
   : path.join(process.resourcesPath, 'assets', 'models');
 
-const onnxWasmPath = isDev
-  ? path.join(__dirname, 'dist', 'DipReader', 'browser', 'assets', 'onnx-wasm')
-  : path.join(process.resourcesPath, 'assets', 'onnx-wasm');
-
+// Configure for Node.js native ONNX runtime
 env.localModelPath = modelsPath;
 env.allowLocalModels = true;
 env.allowRemoteModels = false;
 env.useBrowserCache = false;
-env.backends.onnx.wasm.wasmPaths = onnxWasmPath;
-env.backends.onnx.wasm.numThreads = 4;
+
+// Use onnxruntime-node (native) instead of WASM
+// This provides 2-5x performance improvement
+env.backends.onnx.executionProviders = ['cpu'];
+
+// Optimize thread usage based on CPU cores
+const numThreads = Math.max(1, Math.floor(os.cpus().length / 2));
+if (env.backends.onnx.wasm) {
+  env.backends.onnx.wasm.numThreads = numThreads;
+}
 
 console.log('[AI Search] Models path:', modelsPath);
+console.log('[AI Search] Using onnxruntime-node with', numThreads, 'threads');
 
 // ============================================================================
 // 2. STATE
@@ -31,8 +39,6 @@ console.log('[AI Search] Models path:', modelsPath);
 
 let embedder = null;
 let isInitialized = false;
-// Vector cache: Document ID -> Float32Array
-const vectorCache = new Map();
 
 // ============================================================================
 // 3. CORE FUNCTIONS
@@ -68,10 +74,8 @@ async function indexDocument(id, text) {
     const output = await embedder(text, { pooling: 'mean', normalize: true });
     const vector = output.data;
     
-    // 1. Salva in memoria RAM (Fondamentale per la ricerca immediata)
-    vectorCache.set(id, vector);
-    
-    // 2. Ritorna il vettore al Main Process per il salvataggio su DB
+    // Return the vector to Main Process for saving in sqlite-vss
+    // No in-memory cache needed - sqlite-vss handles storage and indexing
     return { status: 'ok', id, vector };
   } catch (error) {
     console.error(`[AI Search] Error indexing document ${id}:`, error);
@@ -79,119 +83,63 @@ async function indexDocument(id, text) {
   }
 }
 
-function loadVectors(vectorsList) {
-    if (!vectorsList || !Array.isArray(vectorsList)) return { count: 0 };
-
-    let count = 0;
-    for (const item of vectorsList) {
-        if (item.id && item.vector) {
-            // Conversione sicura in Float32Array
-            const vec = item.vector instanceof Float32Array 
-                ? item.vector 
-                : new Float32Array(item.vector);
-            
-            vectorCache.set(item.id, vec);
-            count++;
-        }
-    }
-    console.log(`[AI Search] MEMORIA RIPOPOLATA: ${count} vettori caricati dal DB. Totale: ${vectorCache.size}`);
-    return { count };
-}
-
 async function generateEmbedding(text) {
   if (!embedder) throw new Error('Model not initialized');
   try {
     const output = await embedder(text, { pooling: 'mean', normalize: true });
-    return output.data; // Ritorna Float32Array
+    return output.data; // Returns Float32Array
   } catch (error) {
     console.error('[AI Search] Error generating embedding:', error);
     throw error;
   }
 }
 
-async function search(query) {
+/**
+ * Search for similar documents using db-handler's searchVectors
+ * @param {Object} db - Database handler instance
+ * @param {string|Float32Array} query - Search query (text or embedding vector)
+ * @param {number} limit - Maximum number of results
+ * @returns {Array} - Array of {id, score} objects
+ */
+async function search(db, query, limit = 10) {
   if (!embedder) throw new Error('Model not initialized');
-
-  // --- DEBUG CRITICO: Controlla se la memoria è vuota ---
-  console.log(`[AI Search] Richiesta ricerca. Documenti in memoria: ${vectorCache.size}`);
-  
-  if (vectorCache.size === 0) {
-      console.warn('[AI Search] ATTENZIONE: La memoria AI è vuota! Nessun risultato possibile.');
-      return [];
-  }
-  // ------------------------------------------------------
+  if (!db) throw new Error('Database not provided');
 
   let queryVector;
   try {
-      if (typeof query === 'string') {
-        const output = await embedder(query, { pooling: 'mean', normalize: true });
-        queryVector = output.data;
-      } else {
-        queryVector = new Float32Array(query);
-      }
+    if (typeof query === 'string') {
+      const output = await embedder(query, { pooling: 'mean', normalize: true });
+      queryVector = output.data;
+    } else {
+      queryVector = new Float32Array(query);
+    }
   } catch (e) {
-      console.error('[AI Search] Errore creazione embedding query:', e);
-      return [];
+    console.error('[AI Search] Error creating embedding for query:', e);
+    return [];
   }
 
-  const results = [];
-  for (const [docId, docVector] of vectorCache.entries()) {
-    const score = cosineSimilarity(queryVector, docVector);
-    if (score > 0.25) { 
-      results.push({ id: docId, score });
-    }
-  }
-
-  results.sort((a, b) => b.score - a.score);
-  console.log(`[AI Search] Trovati ${results.length} risultati.`);
+  // Use db-handler's searchVectors method (sqlite-vss)
+  const results = db.searchVectors(queryVector, limit);
+  console.log(`[AI Search] Found ${results.length} results via sqlite-vss`);
   
-  return results.slice(0, 20);
+  return results;
 }
 
-async function reindexAll(documents) {
-  if (!embedder) throw new Error('Model not initialized');
-
-  console.log(`[AI Search] Reindexing ${documents.length} documents...`);
-  
-  // Pulisce la cache RAM prima di iniziare
-  vectorCache.clear();
-
-  let indexed = 0;
-  const logInterval = Math.max(50, Math.floor(documents.length / 10));
-  for (const doc of documents) {
-    // Nota: indexDocument aggiorna automaticamente la vectorCache
-    const text = doc.text || `Document ${doc.id}`;
-    await indexDocument(doc.id, text);
-    indexed++;
-    
-    if (indexed % logInterval === 0) {
-      console.log(`[AI Search] Progress: ${indexed}/${documents.length}`);
+function getState(db) {
+  let indexedCount = 0;
+  if (db) {
+    try {
+      const info = db.getDatabaseInfo();
+      indexedCount = info.vectorCount || 0;
+    } catch (e) {
+      console.error('[AI Search] Error getting state:', e);
     }
   }
-
-  console.log(`[AI Search] Reindexing complete: ${indexed} documents in memory.`);
-  return { status: 'ok', indexed };
-}
-
-function getState() {
+  
   return {
     initialized: isInitialized,
-    indexedDocuments: vectorCache.size
+    indexedDocuments: indexedCount
   };
-}
-
-function clearIndex() {
-  vectorCache.clear();
-  console.log('[AI Search] Index cleared');
-  return { status: 'ok' };
-}
-
-function cosineSimilarity(a, b) {
-  let dotProduct = 0;
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-  }
-  return dotProduct;
 }
 
 module.exports = {
@@ -199,8 +147,5 @@ module.exports = {
   indexDocument,
   generateEmbedding,
   search,
-  reindexAll,
-  getState,
-  clearIndex,
-  loadVectors // Esportato correttamente
+  getState
 };

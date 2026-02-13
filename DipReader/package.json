@@ -5,7 +5,7 @@
   "scripts": {
     "electron": "ng build --base-href / && electron .",
     "electron:ubuntu": "ng build --base-href / && electron . --ozone-platform=x11",
-    "electron:rebuild": "electron-rebuild -f -w better-sqlite3",
+    "electron:rebuild": "electron-rebuild -f -w better-sqlite3 && electron-rebuild -f -w onnxruntime-node",
     "dist": "ng build --configuration production --base-href / && electron-builder",
     "clean": "rm -rf dist dist-electron node_modules/.vite"
   },
@@ -34,9 +34,11 @@
     "better-sqlite3": "^12.6.2",
     "electron-squirrel-startup": "^1.0.1",
     "fast-xml-parser": "^5.3.3",
-    "onnxruntime-web": "^1.24.1",
+    "onnxruntime-node": "^1.20.1",
     "rxjs": "~7.8.0",
     "sharp": "^0.34.5",
+    "sqlite-vec": "^0.1.7-alpha.2",
+    "sqlite-vss": "^0.1.2",
     "tslib": "^2.3.0",
     "xmldom": "^0.6.0"
   },
@@ -75,13 +77,6 @@
         "filter": [
           "**/*"
         ]
-      },
-      {
-        "from": "dist/DipReader/browser/assets/onnx-wasm",
-        "to": "assets/onnx-wasm",
-        "filter": [
-          "**/*"
-        ]
       }
     ],
     "linux": {
@@ -97,8 +92,7 @@
     "asar": true,
     "asarUnpack": [
       "**/better-sqlite3/**/*",
-      "**/sqlite-wasm/**/*",
-      "**/onnxruntime-web/**/*",
+      "**/onnxruntime-node/**/*",
       "**/sharp/**/*"
     ]
   }

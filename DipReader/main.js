@@ -65,6 +65,71 @@ function getContentType(filePath) {
 }
 
 // ============================================
+// Helper Functions
+// ============================================
+
+/**
+ * Generate semantic embeddings for all documents in the database
+ * @param {Object} db - Database handler instance
+ */
+async function generateSemanticEmbeddings(db) {
+    console.log('[Semantic] Starting semantic indexing...');
+    
+    try {
+        // Initialize AI model if not already initialized
+        await aiSearch.initialize();
+        
+        // Query to get all documents with their metadata
+        const docs = db.executeQuery(`
+            SELECT 
+                d.id,
+                d.root_path as name,
+                GROUP_CONCAT(m.meta_value, ' ') as combined_text
+            FROM document d
+            LEFT JOIN metadata m ON d.id = m.document_id
+            WHERE m.meta_type = 'string' and meta_key = 'CategoriaProdotto'
+            GROUP BY d.id
+        `);
+        
+        console.log(`[Semantic] Processing ${docs.length} documents...`);
+        
+        let indexed = 0;
+        for (const doc of docs) {
+            // Combine document name and metadata into searchable text
+            const text = [
+                doc.name || 'Untitled',
+                doc.combined_text || ''
+            ].filter(Boolean).join(' ').trim();
+            
+            if (text) {
+                try {
+                    // Generate embedding vector
+                    const result = await aiSearch.indexDocument(doc.id, text);
+                    
+                    // Save vector to database (sqlite-vss or fallback BLOB)
+                    db.saveVector(doc.id, result.vector);
+                    
+                    indexed++;
+                    
+                    // Log progress every 100 documents
+                    if (indexed % 100 === 0) {
+                        console.log(`[Semantic] Indexed ${indexed}/${docs.length} documents...`);
+                    }
+                } catch (error) {
+                    console.error(`[Semantic] Error indexing document ${doc.id}:`, error);
+                }
+            }
+        }
+        
+        console.log(`[Semantic] ✅ Semantic indexing completed: ${indexed}/${docs.length} documents indexed`);
+        return { success: true, indexed, total: docs.length };
+    } catch (error) {
+        console.error('[Semantic] Error during semantic indexing:', error);
+        throw error;
+    }
+}
+
+// ============================================
 // IPC Handlers for Database Operations
 // ============================================
 
@@ -83,15 +148,17 @@ ipcMain.handle('db:init', async () => {
 ipcMain.handle('db:open', async (event, dipUUID) => {
     try {
         console.log('[IPC] Opening database for DIP:', dipUUID);
-        const result = dbHandler.openOrCreateDatabase(dipUUID);
+        const result = await dbHandler.openOrCreateDatabase(dipUUID);
+        
+        // Initialize AI model if vectors exist
         if (result.success) {
-            console.log('[IPC] Loading existing vectors into AI...');
             const vectors = dbHandler.getAllVectors();
             if (vectors.length > 0) {
-                await aiSearch.initialize(); 
-                aiSearch.loadVectors(vectors);
+                console.log(`[IPC] Database has ${vectors.length} vectors indexed`);
+                await aiSearch.initialize();
             }
         }
+        
         return result;
     } catch (err) {
         console.error('[IPC] Error opening database:', err);
@@ -127,7 +194,7 @@ ipcMain.handle('db:index', async (event, dipUUID, dipPath) => {
         console.log('[IPC] Indexing DIP:', dipUUID, 'at path:', dipPath);
         
         // Open or create database
-        dbHandler.openOrCreateDatabase(dipUUID);
+        await dbHandler.openOrCreateDatabase(dipUUID);
         
         // Check if database has data (for re-indexing)
         const info = dbHandler.getDatabaseInfo();
@@ -136,12 +203,24 @@ ipcMain.handle('db:index', async (event, dipUUID, dipPath) => {
             dbHandler.clearTables();
         }
         
-        // Run indexer
+        // Run structural indexer (XML → SQLite)
         const indexer = new IndexerMain(dbHandler, dipPath);
         await indexer.indexDip();
         
+        console.log('[IPC] Structural indexing completed, starting semantic indexing...');
+        
+        // Run semantic indexing (SQLite → Vector embeddings)
+        const semanticResult = await generateSemanticEmbeddings(dbHandler);
+        
         console.log('[IPC] Indexing completed successfully');
-        return { success: true, dipUUID };
+        console.log(`[IPC] Total: ${semanticResult.indexed} documents indexed semantically`);
+        
+        return { 
+            success: true, 
+            dipUUID,
+            semanticIndexed: semanticResult.indexed,
+            semanticTotal: semanticResult.total
+        };
     } catch (err) {
         console.error('[IPC] Indexing error:', err);
         throw err;
@@ -399,7 +478,8 @@ ipcMain.handle('ai:search', async (event, data) => {
     }
 
     try {
-        const results = await aiSearch.search(query);
+        // Pass database handler to search function (sqlite-vss based)
+        const results = await aiSearch.search(dbHandler, query);
         return { requestId, status: 'ok', results };
     } catch (err) {
         console.error('[IPC] AI search error:', err);

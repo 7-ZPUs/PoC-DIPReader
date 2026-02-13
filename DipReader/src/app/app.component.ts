@@ -311,13 +311,15 @@ async onTestSemanticSearch() {
     }
 
     const ids = rawResults.map(r => r.id);
-    const fileDetails = await this.dbService.getFilesByIds(ids);
+    
+    // ✅ CORRETTO: Carica i DOCUMENTI, non i file
+    const documentDetails = await this.dbService.getDocumentsByIds(ids);
 
-    console.log('4. Risultati:', rawResults);
-    this.semanticResults = fileDetails.map(file => {
-      const match = rawResults.find(r => r.id === file.fileId);
+    console.log('4. Risultati documenti:', documentDetails);
+    this.semanticResults = documentDetails.map(doc => {
+      const match = rawResults.find(r => r.id === doc.documentId);
       return {
-        ...file,
+        ...doc,
         score: match ? (match.score * 100).toFixed(1) + '%' : 'N/A'
       };
     });

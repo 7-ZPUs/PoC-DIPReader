@@ -405,7 +405,7 @@ class IndexerMain {
     const documentoInformatico = xmlDoc.getElementsByTagName('DocumentoInformatico')[0];
     if (!documentoInformatico) return;
 
-    // 1. Main document's Impronta from DocumentoInformatico > IdDoc
+    // 1. Main document's hash from DocumentoInformatico > IdDoc
     const mainIdDoc = documentoInformatico.getElementsByTagName('IdDoc')[0];
     if (mainIdDoc) {
       const improntaCripto = mainIdDoc.getElementsByTagName('ImprontaCrittograficaDelDocumento')[0];
@@ -419,7 +419,7 @@ class IndexerMain {
       }
     }
 
-    // 2. Attachment Improntas from Allegati > IndiceAllegati > IdDoc
+    // 2. Attachment hashes from Allegati > IndiceAllegati > IdDoc
     const allegatiElement = documentoInformatico.getElementsByTagName('Allegati')[0];
     if (allegatiElement) {
       const indiceAllegati = allegatiElement.getElementsByTagName('IndiceAllegati');
@@ -468,7 +468,7 @@ class IndexerMain {
           }
         }
 
-        // Insert Impronta with file_id
+        // Insert hash with file_id
         this.insertMetadata('Impronta', improntaData.impronta, documentId, 'string', fileId);
         if (improntaData.algoritmo) {
           this.insertMetadata('Algoritmo', improntaData.algoritmo, documentId, 'string', fileId);
@@ -477,7 +477,7 @@ class IndexerMain {
         console.log(`[Indexer] Impronta stored for file UUID=${fileUUID}, file_id=${fileId}`);
       }
     } else {
-      // Fallback: no ArchimemoData, store just the main document's Impronta at document level
+      // Fallback: no ArchimemoData, store just the main document's hash at document level
       const firstEntry = improntaMap.values().next().value;
       if (firstEntry) {
         this.insertMetadata('Impronta', firstEntry.impronta, documentId, 'string');

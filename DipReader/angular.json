@@ -29,42 +29,14 @@
                 "glob": "**/*",
                 "input": "src/assets",
                 "output": "/assets"
-              },
-              {
-                "glob": "**/*",
-                "input": "node_modules/@sqlite.org/sqlite-wasm/sqlite-wasm/jswasm",
-                "output": "/assets/sqlite-wasm"
-              },
-              {
-                "glob": "**/*.wasm",
-                "input": "src/assets/onnx-wasm",
-                "output": "/assets/onnx-wasm"
-              },
-              {
-                "glob": "**/*.wasm",
-                "input": "node_modules/onnxruntime-web/dist",
-                "output": "/assets/onnx-wasm"
               }
             ],
             "styles": [
               "src/styles.css"
-            ],
-            "webWorkerTsConfig": "tsconfig.worker.json"
+            ]
           },
           "configurations": {
             "production": {
-              "budgets": [
-                {
-                  "type": "initial",
-                  "maximumWarning": "500kB",
-                  "maximumError": "1MB"
-                },
-                {
-                  "type": "anyComponentStyle",
-                  "maximumWarning": "4kB",
-                  "maximumError": "8kB"
-                }
-              ],
               "outputHashing": "all"
             },
             "development": {
@@ -78,11 +50,6 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "options": {
-            "prebundle": {
-              "exclude": [
-                "@sqlite.org/sqlite-wasm"
-              ]
-            },
             "headers": {
               "Cross-Origin-Opener-Policy": "same-origin",
               "Cross-Origin-Embedder-Policy": "require-corp"
@@ -99,10 +66,7 @@
           "defaultConfiguration": "development"
         },
         "test": {
-          "builder": "@angular/build:unit-test",
-          "options": {
-            "webWorkerTsConfig": "tsconfig.worker.json"
-          }
+          "builder": "@angular/build:unit-test"
         }
       }
     }

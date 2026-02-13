@@ -48,24 +48,30 @@
         (click)="onSemanticResultClick(res)"
         class="semantic-item"
         style="
-          padding: 8px; 
+          padding: 10px; 
           border-bottom: 1px solid #eee; 
-          display: flex; 
-          justify-content: space-between; 
           cursor: pointer; 
           transition: background 0.2s;
         "
         onmouseover="this.style.background='#f0f8ff'"
         onmouseout="this.style.background='transparent'"
     >
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span>📄</span>
-        <span style="font-weight: 500;">{{ res.name }}</span>
-      </div>
+      <div style="display: flex; justify-content: space-between; align-items: start;">
+        <div style="flex: 1;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span>📄</span>
+            <span style="font-weight: 600; color: #1976d2;">{{ res.name }}</span>
+          </div>
+          <div style="font-size: 0.85em; color: #666; margin-left: 28px;">
+            <div><strong>AiP:</strong> {{ res.aipName }}</div>
+            <div *ngIf="res.metadata" style="margin-top: 2px;">{{ res.metadata }}</div>
+          </div>
+        </div>
 
-      <span style="background: #e1f5fe; color: #0277bd; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; align-self: center;">
-        {{ res.score }}
-      </span>
+        <span style="background: #e1f5fe; color: #0277bd; padding: 4px 10px; border-radius: 12px; font-size: 0.8em; font-weight: 600; white-space: nowrap; margin-left: 10px;">
+          {{ res.score }}
+        </span>
+      </div>
     </li>
   </ul>
 </div>

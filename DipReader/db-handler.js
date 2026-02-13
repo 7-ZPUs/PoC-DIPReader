@@ -9,7 +9,8 @@ class DatabaseHandler {
     this.db = null;
     this.currentDipUUID = null;
     this.dbPath = path.join(app.getPath('userData'), 'databases');
-    
+    this.vssEnabled = false; // Track if sqlite-vss is available
+
     // Ensure database directory exists
     if (!fs.existsSync(this.dbPath)) {
       fs.mkdirSync(this.dbPath, { recursive: true });
@@ -19,7 +20,7 @@ class DatabaseHandler {
   /**
    * Open or create a database for a specific DIP
    */
-  openOrCreateDatabase(dipUUID) {
+  async openOrCreateDatabase(dipUUID) {
     const dbFileName = `${dipUUID}.sqlite3`;
     const fullPath = path.join(this.dbPath, dbFileName);
     const fileExists = fs.existsSync(fullPath);
@@ -40,16 +41,41 @@ class DatabaseHandler {
 
     console.log(`[DB Handler] ${fileExists ? 'Opened existing' : 'Created new'} database: ${dbFileName}`);
 
+    // Load sqlite-vss extension for vector similarity search
+    this.vssEnabled = false; // Reset flag
     try {
+      const sqliteVss = await import('sqlite-vss');
+
+      // Get paths to extension files (these include .so extension)
+      const vectorPath = sqliteVss.getVectorLoadablePath();
+      const vssPath = sqliteVss.getVssLoadablePath();
+
+      // Strip extension suffix for better-sqlite3 (it auto-appends .so)
+      const stripExtension = (p) => p.replace(/\.(so|dylib|dll)$/, '');
+
+      this.db.loadExtension(stripExtension(vectorPath));
+      this.db.loadExtension(stripExtension(vssPath));
+
+      // Create virtual table for vector search using vss0
+      this.db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS vss_documents USING vss0(
+          embedding(384)
+        );
+      `);
+
+      this.vssEnabled = true;
+      console.log('[DB Handler] ✅ sqlite-vss extension loaded successfully - using optimized vector search');
+    } catch (e) {
+      console.error('[DB Handler] ❌ Error loading sqlite-vss extension:', e.message);
+      console.warn('[DB Handler] ⚠️  Falling back to BLOB storage (brute-force search)');
+
+      // Fallback: create simple blob table
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS document_vectors (
           doc_id INTEGER PRIMARY KEY,
           embedding BLOB
         );
       `);
-      console.log('[DB Handler] Tabella document_vectors verificata/creata.');
-    } catch (e) {
-      console.error('[DB Handler] Errore creazione tabella vettori:', e);
     }
 
     // If new database, create schema
@@ -65,7 +91,7 @@ class DatabaseHandler {
    */
   createSchema() {
     const schemaPath = path.join(__dirname, 'public', 'schema.sql');
-    
+
     if (!fs.existsSync(schemaPath)) {
       // Try alternative path
       const altSchemaPath = path.join(__dirname, 'src', 'db', 'schema.sql');
@@ -90,36 +116,107 @@ class DatabaseHandler {
   }
 
   saveVector(docId, vector) {
-      if (!this.db) return;
-      try {
-          const buffer = Buffer.from(vector.buffer);
-          this.db.prepare(
-              'INSERT OR REPLACE INTO document_vectors (doc_id, embedding) VALUES (?, ?)'
-          ).run(docId, buffer);
-          //console.log(`[DB Handler] Saved vector for doc_id: ${docId}`);
-      } catch (e) {
-          console.error('[DB Handler] Error saving vector:', e);
+    if (!this.db) return;
+
+    try {
+      if (this.vssEnabled) {
+        // Use sqlite-vss
+        const vectorArray = Array.from(vector);
+        const vectorJson = JSON.stringify(vectorArray);
+
+        this.db.prepare('DELETE FROM vss_documents WHERE rowid = ?').run(docId);
+        this.db.prepare('INSERT INTO vss_documents(rowid, embedding) VALUES (?, ?)').run(docId, vectorJson);
+      } else {
+        // Fallback: BLOB storage
+        const buffer = Buffer.from(vector.buffer);
+        this.db.prepare('INSERT OR REPLACE INTO document_vectors (doc_id, embedding) VALUES (?, ?)').run(docId, buffer);
       }
+
+      //console.log(`[DB Handler] Saved vector for doc_id: ${docId}`);
+    } catch (e) {
+      console.error('[DB Handler] Error saving vector:', e);
+    }
   }
 
   getAllVectors() {
-      if (!this.db) return [];
-      try {
-          const rows = this.db.prepare('SELECT doc_id, embedding FROM document_vectors').all();
-          // Converti i BLOB indietro in Float32Array
-          return rows.map(row => ({
-              id: row.doc_id,
-              vector: new Float32Array(
-                  row.embedding.buffer, 
-                  row.embedding.byteOffset, 
-                  row.embedding.byteLength / 4
-              )
-          }));
-      } catch (e) {
-          console.error('[DB Handler] Error loading vectors:', e);
-          return [];
+    if (!this.db) return [];
+
+    try {
+      let rows;
+      if (this.vssEnabled) {
+        rows = this.db.prepare('SELECT rowid as doc_id FROM vss_documents').all();
+      } else {
+        rows = this.db.prepare('SELECT doc_id FROM document_vectors').all();
       }
+
+      console.log(`[DB Handler] Loaded ${rows.length} vector entries`);
+      return rows.map(row => ({ id: row.doc_id }));
+    } catch (e) {
+      console.error('[DB Handler] Error loading vectors:', e);
+      return [];
+    }
   }
+
+  /**
+   * Search for similar vectors using sqlite-vss (or fallback to brute-force)
+   */
+  searchVectors(queryVector, limit = 20) {
+    if (!this.db) return [];
+
+    try {
+      if (this.vssEnabled) {
+        // Use optimized sqlite-vss search
+        const vectorArray = Array.from(queryVector);
+        const vectorJson = JSON.stringify(vectorArray);
+
+        const results = this.db.prepare(`
+                  SELECT rowid as id, distance
+                  FROM vss_documents
+                  WHERE vss_search(embedding, ?)
+                  LIMIT ?
+              `).all(vectorJson, limit);
+
+        // Convert distance to similarity score (lower distance = higher similarity)
+        return results.map(row => ({
+          id: row.id,
+          score: 1 - row.distance
+        }));
+      } else {
+        // Fallback: brute-force search with BLOB vectors
+        console.warn('[DB Handler] Using fallback brute-force vector search (slower)');
+
+        const rows = this.db.prepare('SELECT doc_id, embedding FROM document_vectors').all();
+        const results = [];
+
+        for (const row of rows) {
+          const docVector = new Float32Array(
+            row.embedding.buffer,
+            row.embedding.byteOffset,
+            row.embedding.byteLength / 4
+          );
+
+          // Cosine similarity (vectors are normalized)
+          let dotProduct = 0;
+          for (let i = 0; i < queryVector.length; i++) {
+            dotProduct += queryVector[i] * docVector[i];
+          }
+
+          const score = dotProduct;
+          if (score > 0.25) {
+            results.push({ id: row.doc_id, score });
+          }
+        }
+
+        // Sort by score descending and return top N
+        results.sort((a, b) => b.score - a.score);
+        return results.slice(0, limit);
+      }
+    } catch (e) {
+      console.error('[DB Handler] Error searching vectors:', e);
+      return [];
+    }
+  }
+
   /**
    * Clear all tables for re-indexing
    */
@@ -156,6 +253,19 @@ class DatabaseHandler {
       }
     }
 
+    // Clear vector search table
+    try {
+      if (this.vssEnabled) {
+        this.db.prepare(`DELETE FROM vss_documents`).run();
+        console.log('[DB Handler] Vector search table (vss) cleared');
+      } else {
+        this.db.prepare(`DELETE FROM document_vectors`).run();
+        console.log('[DB Handler] Vector storage table (blob) cleared');
+      }
+    } catch (e) {
+      console.warn('[DB Handler] Error clearing vector table:', e);
+    }
+
     console.log('[DB Handler] Tables cleared for re-indexing');
     return { success: true };
   }
@@ -170,10 +280,10 @@ class DatabaseHandler {
 
     try {
       const stmt = this.db.prepare(sql);
-      
+
       // Determine if it's a SELECT query
       const isSelect = sql.trim().toLowerCase().startsWith('select');
-      
+
       if (isSelect) {
         return stmt.all(...params);
       } else {
@@ -213,12 +323,12 @@ class DatabaseHandler {
         console.log('[DB Handler] Created databases directory');
         return [];
       }
-      
+
       const files = fs.readdirSync(this.dbPath);
       const databases = files
         .filter(file => file.endsWith('.sqlite3'))
         .map(file => file.replace('.sqlite3', ''));
-      
+
       console.log(`[DB Handler] Found ${databases.length} databases`);
       return databases;
     } catch (err) {
@@ -262,7 +372,7 @@ class DatabaseHandler {
     try {
       const sourceDb = path.join(this.dbPath, `${this.currentDipUUID}.sqlite3`);
       const targetPath = exportPath || path.join(app.getPath('downloads'), `${this.currentDipUUID}.sqlite3`);
-      
+
       fs.copyFileSync(sourceDb, targetPath);
       console.log(`[DB Handler] Database exported to: ${targetPath}`);
       return { success: true, path: targetPath };
@@ -283,12 +393,28 @@ class DatabaseHandler {
     try {
       const fileCount = this.db.prepare('SELECT COUNT(*) as count FROM file').get();
       const documentCount = this.db.prepare('SELECT COUNT(*) as count FROM document').get();
-      
+
+      // Get vector count
+      let vectorCount = 0;
+      try {
+        if (this.vssEnabled) {
+          const result = this.db.prepare('SELECT COUNT(*) as count FROM vss_documents').get();
+          vectorCount = result.count;
+        } else {
+          const result = this.db.prepare('SELECT COUNT(*) as count FROM document_vectors').get();
+          vectorCount = result.count;
+        }
+      } catch (e) {
+        console.warn('[DB Handler] Error getting vector count:', e);
+      }
+
       return {
         open: true,
         dipUUID: this.currentDipUUID,
         fileCount: fileCount.count,
-        documentCount: documentCount.count
+        documentCount: documentCount.count,
+        vectorCount: vectorCount,
+        vssEnabled: this.vssEnabled
       };
     } catch (e) {
       return { open: true, dipUUID: this.currentDipUUID, error: e.message };

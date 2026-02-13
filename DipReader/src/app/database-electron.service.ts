@@ -72,10 +72,10 @@ export class DatabaseService {
       const result = await window.electronAPI.db.init();
       console.log('[DatabaseService] Database ready:', result);
       try {
-          const aiResult = await window.electronAPI.ai.init();
-          console.log('[DatabaseService] AI ready:', aiResult);
+        const aiResult = await window.electronAPI.ai.init();
+        console.log('[DatabaseService] AI ready:', aiResult);
       } catch (aiError) {
-          console.warn('[DatabaseService] AI init warning (potrebbe essere in background):', aiError);
+        console.warn('[DatabaseService] AI init warning (potrebbe essere in background):', aiError);
       }
       this.dbReady = true;
       // Load available databases
@@ -90,9 +90,9 @@ export class DatabaseService {
    */
   async indexDirectory(): Promise<void> {
     console.log('[DatabaseService] Selecting directory...');
-    
+
     const result = await window.electronAPI.dip.selectDirectory();
-    
+
     if (result.canceled || !result.path) {
       throw new Error('Directory selection canceled');
     }
@@ -102,7 +102,7 @@ export class DatabaseService {
 
     // Extract DIP UUID from directory or DiPIndex file
     const dipUUID = await this.extractDipUUID(dipPath);
-    
+
     if (!dipUUID) {
       throw new Error('Unable to extract DIP UUID from the selected directory');
     }
@@ -112,7 +112,7 @@ export class DatabaseService {
 
     // Open or create database and index
     const indexResult = await window.electronAPI.db.index(dipUUID, dipPath);
-    
+
     if (indexResult.success) {
       this.currentDipUUID = indexResult.dipUUID;
       await this.loadAvailableDips();
@@ -130,10 +130,10 @@ export class DatabaseService {
     // For now, we'll use a simple extraction from path or generate one
     const pathParts = dipPath.split(/[/\\]/);
     const lastPart = pathParts[pathParts.length - 1];
-    
+
     // Try to extract UUID from directory name
     const uuidMatch = lastPart.match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
-    
+
     if (uuidMatch) {
       return uuidMatch[0];
     }
@@ -220,7 +220,7 @@ export class DatabaseService {
   async deleteDatabase(dipUUID: string): Promise<boolean> {
     try {
       const result = await window.electronAPI.db.delete(dipUUID);
-      
+
       if (result.success) {
         if (this.currentDipUUID === dipUUID) {
           this.currentDipUUID = null;
@@ -228,7 +228,7 @@ export class DatabaseService {
         }
         await this.loadAvailableDips();
       }
-      
+
       return result.success;
     } catch (error) {
       console.error('[DatabaseService] Error deleting database:', error);
@@ -412,8 +412,8 @@ export class DatabaseService {
     }[]>(sql, params);
 
     // Convert to FileNode array
-     const documentMap = new Map<number, FileNode>();
-    
+    const documentMap = new Map<number, FileNode>();
+
     for (const row of rows) {
       if (!documentMap.has(row.document_id)) {
         // Create document node
@@ -425,10 +425,10 @@ export class DatabaseService {
           children: []
         });
       }
-      
+
       const docNode = documentMap.get(row.document_id)!;
       const fileName = row.file_path.split('/').pop() || row.file_path;
-      
+
       // Add file node to document
       docNode.children.push({
         name: `${row.is_main ? '📄 ' : '📎 '}${fileName}`,
@@ -448,16 +448,16 @@ export class DatabaseService {
     console.log('[DatabaseService] Avvio ricerca semantica:', queryText);
 
     try {
-      const response = await window.electronAPI.ai.search({ 
+      const response = await window.electronAPI.ai.search({
         query: queryText,
         requestId: Date.now()
       });
-      
+
       let results = [];
       if (Array.isArray(response)) {
-          results = response; // Caso legacy
+        results = response; // Caso legacy
       } else if (response && response.results) {
-          results = response.results; // Caso nuovo protocollo
+        results = response.results; // Caso nuovo protocollo
       }
 
       console.log('[DatabaseService] Risultati AI:', results);
@@ -466,7 +466,7 @@ export class DatabaseService {
         const docIds = results.map((r: any) => r.id);
         return results;
       }
-      
+
       return [];
 
     } catch (error) {
@@ -477,27 +477,65 @@ export class DatabaseService {
 
 
 
-  
+
   async getFilesByIds(ids: number[]): Promise<any[]> {
-  if (!ids || ids.length === 0) return [];
+    if (!ids || ids.length === 0) return [];
 
-  // Costruisci la query SQL dinamica per recuperare solo i file trovati
-  const placeholders = ids.map(() => '?').join(',');
-  const sql = `SELECT id, relative_path FROM file WHERE id IN (${placeholders})`;
+    // Costruisci la query SQL dinamica per recuperare solo i file trovati
+    const placeholders = ids.map(() => '?').join(',');
+    const sql = `SELECT id, relative_path FROM file WHERE id IN (${placeholders})`;
 
-  // Esegui la query
-  const rows = await this.executeQuery(sql, ids);
+    // Esegui la query
+    const rows = await this.executeQuery(sql, ids);
 
-  // Mappa i risultati nel formato FileNode
-  return rows.map((row: any) => ({
-    fileId: row.id,
-    name: row.relative_path.split('/').pop(), // Estrae solo il nome file dal percorso
-    type: 'file',
-    expanded: false,
-    children: []
-  }));
-}
- 
+    // Mappa i risultati nel formato FileNode
+    return rows.map((row: any) => ({
+      fileId: row.id,
+      name: row.relative_path.split('/').pop(), // Estrae solo il nome file dal percorso
+      type: 'file',
+      expanded: false,
+      children: []
+    }));
+  }
+
+  async getDocumentsByIds(ids: number[]): Promise<any[]> {
+    if (!ids || ids.length === 0) return [];
+
+    const placeholders = ids.map(() => '?').join(',');
+
+    // Recupera documenti con AiP e metadati principali
+    const sql = `
+      SELECT 
+        d.id,
+        d.root_path,
+        d.aip_uuid,
+        a.root_path as aip_name,
+        GROUP_CONCAT(
+          CASE WHEN m.meta_key IN ('Oggetto', 'Descrizione', 'Titolo') 
+          THEN m.meta_key || ': ' || m.meta_value 
+          END, 
+          ' | '
+        ) as metadata_text
+      FROM document d
+      LEFT JOIN aip a ON d.aip_uuid = a.uuid
+      LEFT JOIN metadata m ON d.id = m.document_id
+      WHERE d.id IN (${placeholders})
+      GROUP BY d.id
+    `;
+
+    const rows = await this.executeQuery(sql, ids);
+
+    return rows.map((row: any) => ({
+      documentId: row.id,
+      name: row.root_path || `Document ${row.id}`,
+      aipName: row.aip_name || 'Unknown AiP',
+      metadata: row.metadata_text || 'No metadata',
+      type: 'document',
+      expanded: false,
+      children: []
+    }));
+  }
+
   findValueByKey(metadata: Record<string, any>, key: string): string | null {
     return metadata[key] || null;
   }

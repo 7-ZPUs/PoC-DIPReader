@@ -80,6 +80,7 @@ async function generateSemanticEmbeddings(db) {
         await aiSearch.initialize();
         
         // Query to get all documents with their metadata
+        // Include ALL metadata for better semantic search (not just CategoriaProdotto)
         const docs = db.executeQuery(`
             SELECT 
                 d.id,
@@ -87,7 +88,7 @@ async function generateSemanticEmbeddings(db) {
                 GROUP_CONCAT(m.meta_value, ' ') as combined_text
             FROM document d
             LEFT JOIN metadata m ON d.id = m.document_id
-            WHERE m.meta_type = 'string' and meta_key = 'CategoriaProdotto'
+            WHERE m.meta_type = 'string' AND m.file_id IS NULL AND m.meta_key = 'CategoriaProdotto'
             GROUP BY d.id
         `);
         

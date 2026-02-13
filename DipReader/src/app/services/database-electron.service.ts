@@ -497,7 +497,12 @@ export class DatabaseService {
     }));
   }
 
+  /**
+   * @deprecated Use SearchService.getDocumentDetailsByIds() instead
+   * Document enrichment logic has been moved to SearchService for better separation of concerns
+   */
   async getDocumentsByIds(ids: number[]): Promise<any[]> {
+    console.warn('DatabaseService.getDocumentsByIds is deprecated. Use SearchService.getDocumentDetailsByIds instead.');
     if (!ids || ids.length === 0) return [];
 
     const placeholders = ids.map(() => '?').join(',');

@@ -168,6 +168,36 @@ export class MetadataService {
   }
 
   /**
+   * Get combined text from file metadata for AI indexing
+   * Retrieves all metadata and combines it into searchable text
+   */
+  async getMetadataTextForAI(fileId: number, fileName: string): Promise<string> {
+    try {
+      // Get all metadata for the file
+      const metadataRows = await this.dbService.executeQuery<Array<{
+        meta_key: string;
+        meta_value: string;
+      }>>(`
+        SELECT meta_key, meta_value
+        FROM metadata
+        WHERE file_id = ? OR (document_id = (SELECT document_id FROM file WHERE id = ?) AND file_id IS NULL)
+      `, [fileId, fileId]);
+      
+      const metadataText = metadataRows
+        .map((m: any) => `${m.meta_key}: ${m.meta_value}`)
+        .join('. ');
+      
+      // Combine metadata with filename
+      const combinedText = (metadataText || '') + ` File: ${fileName}`;
+      return combinedText;
+      
+    } catch (err) {
+      console.warn(`[MetadataService] Error getting metadata for file ${fileId}:`, err);
+      return fileName; // Fallback to just filename
+    }
+  }
+
+  /**
    * Utility: Find value by key in a metadata object
    * This is the centralized metadata key lookup - other services should use this
    */

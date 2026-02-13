@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { DatabaseService } from './database-electron.service';
+import { MetadataService } from './metadata.service';
 import { SearchFilter, FilterOptionGroup } from '../models/search-filter';
 
 /**
@@ -14,6 +15,7 @@ import { SearchFilter, FilterOptionGroup } from '../models/search-filter';
  * 
  * DEPENDENCIES:
  * - DatabaseService: for executing queries
+ * - MetadataService: for metadata retrieval (proper service usage)
  * - Uses Electron IPC for AI operations (main process)
  * 
  * NOTE: This service centralizes ALL search-related logic.
@@ -23,7 +25,10 @@ import { SearchFilter, FilterOptionGroup } from '../models/search-filter';
 export class SearchService {
   private isAiReady: boolean = false;
   
-  constructor(private dbService: DatabaseService) {
+  constructor(
+    private dbService: DatabaseService,
+    private metadataService: MetadataService
+  ) {
     this.initAI();
   }
 
@@ -62,118 +67,7 @@ export class SearchService {
     }
   }
 
-  async indexDocument(docId: number, metadataCombinedText: string) {
-    if (this.isAiReady) {
-      try {
-        await window.electronAPI.ai.index({id: docId, text: metadataCombinedText});
-      } catch (error) {
-        console.error('Error indexing document:', error);
-      }
-    }
-  }
-
-  async reindexAll(): Promise<void> {
-    if (!this.isAiReady) {
-      console.error('Service: AI model not ready');
-      return;
-    }
-
-    console.log('Service: Starting reindexing...');
-    
-    try {
-      // 1. FETCH DOCUMENTS FROM DATABASE
-      console.log('Service: Fetching documents from database...');
-      const documents = await this.fetchAllDocumentsWithMetadata();
-      
-      if (documents.length === 0) {
-        console.warn('Service: No documents found to index');
-        return;
-      }
-      
-      console.log(`Service: Found ${documents.length} documents, sending to main process...`);
-      
-      // 2. SEND TO MAIN PROCESS FOR INDEXING
-      const result = await window.electronAPI.ai.reindexAll(documents);
-      console.log('Service: Reindexing completed:', result);
-      
-    } catch (error) {
-      console.error('Service: Error during reindexing:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Recupera tutti i documenti navigando l'albero completo
-   */
-  private async fetchAllDocumentsWithMetadata(): Promise<Array<{id: number, text: string}>> {
-    try {
-      // 1. Recupera l'albero completo dal DB
-      const roots = await this.dbService.searchDocuments('', []);
-      console.log(`Service: Albero recuperato con ${roots.length} nodi radice.`);
-
-      // 2. FUNZIONE HELPER: Appiattisce l'albero per estrarre tutti i file
-      const extractFilesRecursively = (nodes: any[]): any[] => {
-        let files: any[] = [];
-        for (const node of nodes) {
-          // Se è un file, lo prendiamo
-          if (node.type === 'file' && node.fileId) {
-            files.push(node);
-          }
-          // Se è una cartella (o ha figli), scendiamo in profondità
-          if (node.children && node.children.length > 0) {
-            files = files.concat(extractFilesRecursively(node.children));
-          }
-        }
-        return files;
-      };
-
-      // 3. Estraiamo la lista piatta di tutti i file
-      const allFiles = extractFilesRecursively(roots);
-      console.log(`Service: Estratti ${allFiles.length} file totali dall'albero.`);
-      
-      const documents: Array<{id: number, text: string}> = [];
-      
-      // 4. Processa ogni file trovato
-      for (const node of allFiles) {
-          try {
-            // Recupera metadati specifici per il file o documento usando executeQuery
-            const metadataRows = await this.dbService.executeQuery<Array<{
-              meta_key: string;
-              meta_value: string;
-            }>>(`
-              SELECT meta_key, meta_value
-              FROM metadata
-              WHERE file_id = ? OR (document_id = (SELECT document_id FROM file WHERE id = ?) AND file_id IS NULL)
-            `, [node.fileId, node.fileId]);
-            
-            const metadataText = metadataRows
-              .map((m: any) => `${m.meta_key}: ${m.meta_value}`)
-              .join('. ');
-            
-            // Testo combinato per l'AI
-            const combinedText = (metadataText || '') + ` File: ${node.name}`;
-            
-            documents.push({
-              id: node.fileId,
-              text: combinedText
-            });
-            
-          } catch (err) {
-            console.warn(`Service: Errore metadati per file ${node.fileId}`, err);
-            documents.push({ id: node.fileId, text: node.name });
-          }
-      }
-      
-      console.log(`Service: Preparati ${documents.length} documenti per l'AI.`);
-      return documents;
-      
-    } catch (error) {
-      console.error('Service: Errore recupero documenti:', error);
-      return [];
-    }
-  }
-
-  /**
+    /**
    * Carica le chiavi disponibili per i filtri da tutti i file
    */
   async loadAvailableFilterKeys(): Promise<string[]> {
@@ -286,6 +180,72 @@ export class SearchService {
       console.error('Error generating embedding:', error);
       throw error;
     }
+  }
+
+  /**
+   * Get document details by IDs with formatted metadata
+   * Used after semantic search to enrich results with document information
+   */
+  async getDocumentDetailsByIds(ids: number[]): Promise<any[]> {
+    if (!ids || ids.length === 0) return [];
+
+    const placeholders = ids.map(() => '?').join(',');
+
+    // Get document basic info
+    const documents = await this.dbService.executeQuery<Array<{
+      file_id: number;
+      document_id: number;
+      file_relative_path: string;
+      document_root_path: string;
+      aip_uuid: string;
+      class_name: string;
+    }>>(`
+      SELECT 
+        f.id as file_id,
+        d.id as document_id,
+        f.relative_path as file_relative_path,
+        d.root_path as document_root_path,
+        a.uuid as aip_uuid,
+        dc.class_name
+      FROM file f
+      JOIN document d ON f.document_id = d.id
+      JOIN aip a ON d.aip_uuid = a.uuid
+      JOIN document_class dc ON a.document_class_id = dc.id
+      WHERE f.id IN (${placeholders})
+    `, ids);
+
+    // Enrich with metadata using MetadataService (proper service usage)
+    const enrichedDocs = await Promise.all(documents.map(async (doc) => {
+      // Get all metadata for this file
+      const metadataObj = await this.dbService.executeQuery<Array<{
+        meta_key: string;
+        meta_value: string;
+      }>>(`
+        SELECT meta_key, meta_value
+        FROM metadata
+        WHERE file_id = ? OR (document_id = ? AND file_id IS NULL)
+      `, [doc.file_id, doc.document_id]);
+
+      // Format metadata as key-value pairs
+      const metadata: Record<string, any> = {};
+      metadataObj.forEach((m: any) => {
+        metadata[m.meta_key] = m.meta_value;
+      });
+
+      return {
+        fileId: doc.file_id,
+        documentId: doc.document_id,
+        name: doc.file_relative_path.split('/').pop(),
+        type: 'file' as const,
+        expanded: false,
+        children: [],
+        metadata,
+        aipUuid: doc.aip_uuid,
+        className: doc.class_name
+      };
+    }));
+
+    return enrichedDocs;
   }
 
   /**

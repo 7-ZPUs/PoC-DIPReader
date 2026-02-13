@@ -243,21 +243,19 @@ export class AppComponent implements OnInit {
 
   async runIndexer() {
     try {
-      await this.dbService.indexDirectory();
+      // Backend already handles both structural AND semantic indexing
+      const result = await this.dbService.indexDirectory();
 
       this.fileTree = await this.dbService.getTreeFromDb();
       await this.loadSearchKeys();
       this.cdr.detectChanges();
 
-      console.log('Avvio indicizzazione semantica (AI)...');
-      
-      this.searchService.reindexAll().then(async () => {
-         console.log('Indicizzazione AI completata con successo.');
-         await window.electronAPI.utils.showMessage('Indicizzazione Completata! Ora puoi usare la ricerca semantica.', 'info');
-      }).catch(err => {
-         console.error('Errore AI:', err);
-         window.electronAPI.utils.showMessage('Indicizzazione SQL ok, ma errore AI: ' + err.message, 'error');
-      });
+      // Show success message (semantic indexing already done in backend)
+      await window.electronAPI.utils.showMessage(
+        'Indicizzazione completata! Indicizzati strutturalmente e semanticamente.', 
+        'info'
+      );
+      console.log('Indicizzazione completata:', result);
     } catch (error: any) {
       console.error('Error running indexer:', error);
       window.electronAPI.utils.showMessage('Errore durante l\'indicizzazione: ' + error.message, 'error');
@@ -306,11 +304,12 @@ async onTestSemanticSearch() {
 
     const ids = rawResults.map(r => r.id);
 
-    const documentDetails = await this.dbService.getDocumentsByIds(ids);
+    // Use SearchService instead of DatabaseService (proper service layer)
+    const documentDetails = await this.searchService.getDocumentDetailsByIds(ids);
 
     console.log('4. Risultati documenti:', documentDetails);
     this.semanticResults = documentDetails.map(doc => {
-      const match = rawResults.find(r => r.id === doc.documentId);
+      const match = rawResults.find(r => r.id === doc.fileId);
       return {
         ...doc,
         score: match ? (match.score * 100).toFixed(1) + '%' : 'N/A'

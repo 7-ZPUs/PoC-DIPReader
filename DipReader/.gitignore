@@ -47,3 +47,4 @@ Thumbs.db
 # AI Models (too large for git, downloaded via npm run setup:models)
 assets/models/Xenova/*/onnx/*.onnx
 !assets/models/Xenova/*/onnx/.gitkeep
+dist-main/assets/models/Xenova/*/onnx/*.onnx

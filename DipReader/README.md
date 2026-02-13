@@ -14,7 +14,7 @@ Proof of Concept del Capitolato C3 - "DIP Reader: Applicazione per la gestione e
 | **npm** | 10.9.3 | Package manager |
 | **Angular** | 21.0.0 | Framework frontend |
 | **Electron** | 40.2.1 | Framework per app desktop |
-| **TypeScript** | 5.9.2 | Linguaggio di programmazione |
+| **TypeScript** | 5.9.2 | Linguaggio di programmazione (frontend + backend) |
 
 ### Dipendenze Core
 
@@ -31,6 +31,27 @@ Proof of Concept del Capitolato C3 - "DIP Reader: Applicazione per la gestione e
 - **Electron Builder**: 26.7.0
 - **Vitest**: 4.0.8 (test runner)
 - **@electron/rebuild**: 4.0.3 (build moduli nativi)
+- **@types/node**: 22.10.5 (Type definitions Node.js)
+- **@types/better-sqlite3**: 7.6.11 (Type definitions SQLite)
+- **@types/xmldom**: 0.1.34 (Type definitions XML parser)
+
+---
+
+
+### Pipeline di Build
+
+1. **TypeScript Compilation** (`npm run build`)
+   - Compila `*.ts` → `dist-main/*.js`
+   - Genera type declarations (`*.d.ts`)
+   - Crea source maps per debugging
+
+2. **Angular Build** (`npm run build`)
+   - Compila frontend TypeScript
+   - Output in `dist/DipReader/browser/`
+
+3. **Electron Package** (`npm run dist`)
+   - Combina Angular build + main process compilato
+   - Crea eseguibili per la piattaforma corrente
 
 ---
 
@@ -77,38 +98,66 @@ Proof of Concept del Capitolato C3 - "DIP Reader: Applicazione per la gestione e
    ```
 
    > **Nota**: L'installazione potrebbe richiedere alcuni minuti per compilare i moduli nativi (better-sqlite3).  
-   Questo comando scarica anche i modelli quantizzati da HuggingFace, più info nel README.md della cartella src/assets/models
+   Questo comando esegue:
+   > - Installazione dipendenze npm
+   > - Compilazione TypeScript per il download dei modelli
+   > - Download modelli quantizzati da HuggingFace (più info nel README.md della cartella src/assets/models)
 
 3. **Rebuild moduli nativi per Electron**
    ```bash
-   npm run electron:rebuild
+   npm run rebuild
    # oppure manualmente:
    npx electron-rebuild
    ```
 
 4. **Verifica installazione**
    ```bash
-   # Build del progetto Angular
-   npm run ng build
+   # Build completo (TypeScript + Angular)
+   npm run build
    
-   # Avvio applicazione Electron
-   npm run electron
+   # Avvio Electron
+   npm start
+   
+   # Oppure tutto insieme
+   npm run dev
    ```
 
 ---
 
-### Development Build
+### Workflow di Sviluppo
+
+#### Build + Avvio Separati
 
 ```bash
-ng build
+# 1. Build completo (TypeScript main process + Angular frontend)
+npm run build
+
+# 2. Avvio Electron (senza rebuild)
+npm start
 ```
 
-I file compilati saranno in `dist/DipReader/browser/`.
+#### Build + Avvio Insieme (rapido)
+
+```bash
+# Build + avvio in un comando
+npm run dev
+
+# Su Ubuntu con problemi GPU:
+npm run dev:ubuntu
+```
+
+I file compilati saranno in:
+- Main process: `dist-main/` (JS + declaration files + source maps)
+- Frontend: `dist/DipReader/browser/`
 
 ### Production Build
 
 ```bash
-ng build --configuration production --base-href /
+# Build production + pacchetto installabile
+npm run dist
+
+# Solo build production (senza packaging)
+npm run build:prod
 ```
 
 Build ottimizzata per performance e dimensioni.
@@ -126,8 +175,9 @@ npm run dist
 ```
 
 Questo comando:
-1. Compila Angular in modalità production
-2. Crea pacchetti installabili per il sistema operativo corrente
+1. Compila TypeScript del main process (da `.ts` a `.js`)
+2. Compila Angular in modalità production
+3. Crea pacchetti installabili per il sistema operativo corrente
 
 #### 2. Output della Build
 
@@ -193,12 +243,16 @@ Per modificare le piattaforme di output, modifica `package.json`:
 ### Asset Inclusi nel Package
 
 I seguenti file sono automaticamente inclusi nella build:
-- Applicazione Angular compilata
-- Main process Electron (`main.js`, `preload.js`)
-- Database handlers (`db-handler.js`, `indexer-main.js`, `ai-search.js`)
-- Schema database (`public/schema.sql`)
+- Applicazione Angular compilata (`dist/DipReader/browser/`)
+- Main process Electron compilato da TypeScript (`dist-main/*.js`)
+  - `main.js` - Entry point Electron
+  - `preload.js` - IPC bridge
+  - `db-handler.js` - SQLite + vector search
+  - `indexer-main.js` - XML parser e indexer
+  - `ai-search.js` - Semantic search con transformers
+  - `download-models.js` - Script download modelli
+- Schema database (`schema.sql`)
 - Modelli AI pre-scaricati (`assets/models/`)
-- Runtime ONNX WebAssembly (`assets/onnx-wasm/`)
 
 ---
 
@@ -215,8 +269,9 @@ npx electron-rebuild -f -w better-sqlite3
 
 ```bash
 # Pulisci cache e reinstalla
-rm -rf node_modules package-lock.json
+rm -rf node_modules package-lock.json dist dist-main
 npm install
+npm run build
 ```
 
 ### Errore durante la build per Linux
@@ -240,16 +295,71 @@ unzip -l dist-electron/DipReader-*.AppImage  # Linux
 ### Errore all'accelerazione hardware "Schema ... does not have key font-antialiasing"
 
 ```bash
-npm run electron:ubuntu
+# Build + avvio con GPU disabled
+npm run dev:ubuntu
+
+# Oppure solo avvio (dopo build)
+npm run start:ubuntu
 ```
 
+### Errore di compilazione TypeScript
+
+Se la compilazione TypeScript fallisce:
+
+```bash
+# Verifica errori TypeScript
+npm run build
+
+# Se ci sono errori nei file .ts, correggili prima di procedere
+# I file sorgente sono nella root: main.ts, db-handler.ts, etc.
+
+# Pulisci e ricompila
+rm -rf dist-main
+npm run build
+```
+
+### I file JavaScript non sono aggiornati
+
+Se modifichi i file `.ts` ma Electron usa codice vecchio:
+
+```bash
+# Assicurati di compilare prima di avviare
+npm run dev
+
+# Verifica che dist-main/ contenga i file aggiornati
+ls -la dist-main/
+```
 
 ---
 
 
 ## Scripts Disponibili
 
+### Setup Iniziale
 | Script | Descrizione |
 |--------|-------------|
-| `npm run electron` | Build + avvia Electron (development) |
+| `npm run setup` | Installa dipendenze + scarica modelli AI |
+| `npm run setup:models` | Solo download modelli AI |
+| `npm run rebuild` | Rebuild moduli nativi (better-sqlite3, onnxruntime) |
+
+### Sviluppo
+| Script | Descrizione |
+|--------|-------------|
+| `npm run build` | Build completo (TypeScript + Angular) |
+| `npm start` | Avvia Electron (dopo build) |
+| `npm run dev` | Build + avvio insieme |
+| `npm run dev:ubuntu` | Build + avvio (Ubuntu, GPU disabled) |
+| `npm run dev:ubuntu-x11` | Build + avvio (Ubuntu, backend X11) |
+| `npm run start:ubuntu` | Solo avvio (Ubuntu, GPU disabled) |
+| `npm run start:ubuntu-x11` | Solo avvio (Ubuntu, backend X11) |
+
+### Production
+| Script | Descrizione |
+|--------|-------------|
+| `npm run build:prod` | Build production ottimizzato |
 | `npm run dist` | Build production + crea pacchetti installabili |
+
+### Utility
+| Script | Descrizione |
+|--------|-------------|
+| `npm run clean` | Rimuove tutti i file compilati |

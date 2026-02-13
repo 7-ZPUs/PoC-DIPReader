@@ -1,21 +1,6 @@
 import { Injectable } from '@angular/core';
 import { DatabaseService } from './database-electron.service';
 
-/**
- * Gestione delle operazioni sui file
- * 
- * RESPONSIBILITIES:
- * - Physical file path resolution
- * - Document subjects retrieval
- * - Document procedures retrieval
- * - File-related database queries
- * 
- * DEPENDENCIES:
- * - DatabaseService: for executing queries only
- * 
- * NOTE: Focuses on file-system and file-entity operations.
- * Does not handle file content reading (use Electron IPC) or metadata (use MetadataService).
- */
 @Injectable({ providedIn: 'root' })
 export class FileService {
   constructor(private dbService: DatabaseService) {}

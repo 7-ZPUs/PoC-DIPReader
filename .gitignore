@@ -8,6 +8,7 @@ package-lock.json # Optional: Keep this if you want to lock versions, ignore if 
 .angular/
 dist/
 dist-main/
+dist-electron/
 *.sh
 tmp/
 out-tsc/

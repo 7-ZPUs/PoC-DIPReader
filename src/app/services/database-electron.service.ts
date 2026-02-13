@@ -6,8 +6,8 @@ export interface FileNode {
   type: 'folder' | 'file';
   children: FileNode[];
   expanded?: boolean;
-  fileId?: number; // ID del file nel database (solo per nodi di tipo 'file')
-  documentId?: number; // ID del documento logico (per nodi documento o file)
+  fileId?: number;
+  documentId?: number;
 }
 
 // Type definitions for the Electron API
@@ -49,27 +49,6 @@ declare global {
   }
 }
 
-/**
- * Service for managing SQLite database via Electron IPC
- * 
- * CORE RESPONSIBILITIES:
- * - Database connection management (init, open, close)
- * - DIP directory indexing
- * - Low-level SQL query execution (executeQuery)
- * - Tree structure building (getTreeFromDb)
- * - Basic document/file search by metadata (searchDocuments)
- * - Database lifecycle (list, delete, export, info)
- * 
- * BOUNDARIES:
- * - This service provides LOW-LEVEL database access
- * - Business logic should be in specialized services:
- *   * SearchService: for semantic search and filters
- *   * MetadataService: for metadata operations
- *   * FileService: for file operations
- *   * FileIntegrityService: for integrity checks
- * 
- * Communicates with the main process for all database operations
- */
 @Injectable({ providedIn: 'root' })
 export class DatabaseService {
   private dbReady = false;
@@ -143,8 +122,6 @@ export class DatabaseService {
    * Extract DIP UUID from the directory path or DiPIndex file
    */
   private async extractDipUUID(dipPath: string): Promise<string | null> {
-    // The UUID extraction will happen in the main process
-    // For now, we'll use a simple extraction from path or generate one
     const pathParts = dipPath.split(/[/\\]/);
     const lastPart = pathParts[pathParts.length - 1];
 
@@ -363,22 +340,6 @@ export class DatabaseService {
   }
 
   /**
-   * @deprecated Use SearchService.loadAvailableFilterKeys() instead
-   * Maintained for backward compatibility only
-   */
-  async getAvailableMetadataKeys(): Promise<string[]> {
-    console.warn('DatabaseService.getAvailableMetadataKeys is deprecated. Use SearchService.loadAvailableFilterKeys instead.');
-    const rows = await this.executeQuery<{ meta_key: string }[]>(`
-      SELECT DISTINCT meta_key
-      FROM metadata
-      WHERE meta_key IS NOT NULL AND meta_key != ''
-      ORDER BY meta_key
-    `);
-
-    return rows.map(row => row.meta_key);
-  }
-
-  /**
    * Search documents by name and filters
    * Core method for building the filtered tree structure
    */
@@ -460,29 +421,17 @@ export class DatabaseService {
     return Array.from(documentMap.values());
   }
 
-  /**
-   * @deprecated Use SearchService.searchSemantic() instead
-   * Semantic search logic has been moved to SearchService for better separation of concerns
-   */
-  async searchSemantic(queryText: string): Promise<any[]> {
-    console.warn('DatabaseService.searchSemantic is deprecated. Use SearchService.searchSemantic instead.');
-    throw new Error('Use SearchService.searchSemantic instead of DatabaseService.searchSemantic');
-  }
-
-
-
-
   async getFilesByIds(ids: number[]): Promise<any[]> {
     if (!ids || ids.length === 0) return [];
 
-    // Costruisci la query SQL dinamica per recuperare solo i file trovati
+
     const placeholders = ids.map(() => '?').join(',');
     const sql = `SELECT id, relative_path FROM file WHERE id IN (${placeholders})`;
 
-    // Esegui la query
+
     const rows = await this.executeQuery(sql, ids);
 
-    // Mappa i risultati nel formato FileNode
+
     return rows.map((row: any) => ({
       fileId: row.id,
       name: row.relative_path.split('/').pop(), // Estrae solo il nome file dal percorso

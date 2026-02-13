@@ -4,22 +4,6 @@ import { IntegrityCheckResult, SavedIntegrityStatus } from '../models/integrity-
 import { FileService } from './file.service';
 import { MetadataService } from './metadata.service';
 
-/**
- * Gestione della verifica d'integrità dei file
- * 
- * RESPONSIBILITIES:
- * - File integrity verification (hash comparison)
- * - SHA-256 hash calculation
- * - Integrity result persistence
- * - Integrity status retrieval
- * 
- * DEPENDENCIES:
- * - DatabaseService: for saving/loading verification results
- * - FileService: for physical file paths
- * - MetadataService: for expected hash retrieval (NO direct metadata queries)
- * 
- * NOTE: Uses MetadataService for hash retrieval to avoid duplicate logic.
- */
 @Injectable({ providedIn: 'root' })
 export class FileIntegrityService {
   constructor(
@@ -28,13 +12,6 @@ export class FileIntegrityService {
     private metadataService: MetadataService
   ) {}
 
-  /**
-   * Verifica l'integrità completa di un file:
-   * - Legge il file dal filesystem
-   * - Recupera l'hash atteso dai metadati
-   * - Calcola l'hash SHA-256
-   * - Confronta e ritorna il risultato
-   */
   async verifyFileIntegrity(fileId: number): Promise<IntegrityCheckResult> {
     // Get file path
     const filePath = await this.fileService.getPhysicalPath(fileId);

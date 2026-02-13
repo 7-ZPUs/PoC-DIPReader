@@ -3,24 +3,6 @@ import { DatabaseService } from './database-electron.service';
 import { MetadataService } from './metadata.service';
 import { SearchFilter, FilterOptionGroup } from '../models/search-filter';
 
-/**
- * Servizio per la gestione della ricerca e filtri
- * 
- * RESPONSIBILITIES:
- * - Semantic search (AI-powered search via embeddings)
- * - Filter management (loading, grouping, applying filters)
- * - Search query coordination (combining semantic + metadata filters)
- * - Document indexing for semantic search
- * - AI model initialization and state management
- * 
- * DEPENDENCIES:
- * - DatabaseService: for executing queries
- * - MetadataService: for metadata retrieval (proper service usage)
- * - Uses Electron IPC for AI operations (main process)
- * 
- * NOTE: This service centralizes ALL search-related logic.
- * Do not duplicate search logic in DatabaseService or other services.
- */
 @Injectable({ providedIn: 'root' })
 export class SearchService {
   private isAiReady: boolean = false;
@@ -67,9 +49,6 @@ export class SearchService {
     }
   }
 
-    /**
-   * Carica le chiavi disponibili per i filtri da tutti i file
-   */
   async loadAvailableFilterKeys(): Promise<string[]> {
     const rows = await this.dbService.executeQuery<Array<{ meta_key: string }>>(`
       SELECT DISTINCT meta_key
@@ -103,7 +82,7 @@ export class SearchService {
   async applyFilters(filters: SearchFilter[], freeTextQuery?: string): Promise<number[]> {
     let semanticIds: number[] | null = null;
     
-    // Ricerca semantica se c'è una query testuale
+    // Semantic search for textual query
     if (freeTextQuery && freeTextQuery.trim().length > 2) {
       console.log(`Avvio ricerca semantica per: "${freeTextQuery}"`);
       const semanticResults = await this.searchSemantic(freeTextQuery);
@@ -111,24 +90,24 @@ export class SearchService {
       console.log('Risultati semantici (IDs):', semanticIds);
     }
     
-    // Ricerca per metadati
+    // Metadata search
     const dbResults = await this.dbService.searchDocuments('', filters as any);
     const filterIds = dbResults
       .filter(node => node.type === 'file' && node.fileId)
       .map(node => node.fileId!);
 
-    // Combina i risultati
+    // Combine results
     if (semanticIds !== null) {
       if (filters.length > 0) {
-        // Intersezione: documenti che matchano ENTRAMBI i criteri
+        // Intersection: documents matching BOTH criteria
         return semanticIds.filter(id => filterIds.includes(id));
       } else {
-        // Solo ricerca semantica
+        // Only semantic search
         return semanticIds;
       }
     }
     
-    // Solo ricerca per metadati
+    // Only metadata search
     return filterIds;
   }
 
@@ -182,13 +161,6 @@ export class SearchService {
     }
   }
 
-  /**
-   * Get document details by document IDs with formatted metadata
-   * Used after semantic search to enrich results with document information
-   * 
-   * @param documentIds - Array of document IDs from semantic search
-   * @returns Object with documents array and ID mapping
-   */
   async getDocumentDetailsByIds(documentIds: number[]): Promise<{documents: any[], idMap: Map<number, number>}> {
     if (!documentIds || documentIds.length === 0) {
       return { documents: [], idMap: new Map() };

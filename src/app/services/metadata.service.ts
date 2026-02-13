@@ -1,21 +1,7 @@
 import { Injectable } from '@angular/core';
 import { DatabaseService } from './database-electron.service';
 
-/**
- * Gestione e manipolazione dei metadati
- * 
- * RESPONSIBILITIES:
- * - Metadata retrieval (file-level and document-level)
- * - Metadata value lookups with fallback logic
- * - Metadata parsing and type conversion
- * - Hash (Impronta) retrieval from metadata
- * 
- * DEPENDENCIES:
- * - DatabaseService: for executing queries only
- * 
- * NOTE: This is the SINGLE source of truth for metadata operations.
- * Other services should use this service rather than querying metadata directly.
- */
+
 @Injectable({ providedIn: 'root' })
 export class MetadataService {
   constructor(private dbService: DatabaseService) {}

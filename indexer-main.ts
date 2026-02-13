@@ -397,8 +397,8 @@ class IndexerMain {
   }
 
   /**
-   * Extract Impronta (hash) for ALL files: main document + each attachment.
-   * Maps UUID → Impronta from DocumentoInformatico/Allegati, then UUID → file path
+   * Extract hash for ALL files: main document + each attachment.
+   * Maps UUID → hash from DocumentoInformatico/Allegati, then UUID → file path
    * from ArchimemoData, and finally looks up file_id in the database.
    */
   processImpronte(xmlDoc: any, documentId: number): void {

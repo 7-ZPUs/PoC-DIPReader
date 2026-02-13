@@ -8,7 +8,7 @@ import * as fs from 'node:fs';
 import type DatabaseHandler from './db-handler';
 
 // ============================================================================
-// 1. CONFIGURATION
+// CONFIGURATION
 // ============================================================================
 
 const isDev = !app.isPackaged;
@@ -22,8 +22,6 @@ env.allowLocalModels = true;
 env.allowRemoteModels = false;
 env.useBrowserCache = false;
 
-// Use onnxruntime-node (native) instead of WASM
-// This provides 2-5x performance improvement
 env.backends.onnx.executionProviders = ['cpu'];
 
 // Optimize thread usage based on CPU cores
@@ -36,14 +34,14 @@ console.log('[AI Search] Models path:', modelsPath);
 console.log('[AI Search] Using onnxruntime-node with', numThreads, 'threads');
 
 // ============================================================================
-// 2. STATE
+// STATE
 // ============================================================================
 
 let embedder: any | null = null;
 let isInitialized: boolean = false;
 
 // ============================================================================
-// 3. INTERFACES
+// INTERFACES
 // ============================================================================
 
 interface InitializeResult {
@@ -73,10 +71,10 @@ interface StateResult {
 async function initialize(): Promise<InitializeResult> {
   if (isInitialized) return { status: 'already_initialized' };
 
-  console.log('[AI Search] Inizializzazione modello...');
+  console.log('[AI Search] Model init...');
   try {
     if (!fs.existsSync(modelsPath)) {
-      console.error(`[AI Search] ERRORE GRAVE: Cartella modelli mancante: ${modelsPath}`);
+      console.error(`[AI Search] missing folder: ${modelsPath}`);
     }
     embedder = await pipeline('feature-extraction', 'Xenova/paraphrase-multilingual-MiniLM-L12-v2', {
       quantized: true,
@@ -84,10 +82,10 @@ async function initialize(): Promise<InitializeResult> {
     });
     
     isInitialized = true;
-    console.log('[AI Search] Modello caricato con successo.');
+    console.log('[AI Search] Model loaded successfully.');
     return { status: 'ok' };
   } catch (error) {
-    console.error('[AI Search] Errore caricamento modello:', error);
+    console.error('[AI Search] Error loading model:', error);
     throw new Error(`Failed to load AI model: ${(error as Error).message}`);
   }
 }
@@ -119,13 +117,6 @@ async function generateEmbedding(text: string): Promise<Float32Array> {
   }
 }
 
-/**
- * Search for similar documents using db-handler's searchVectors
- * @param {Object} db - Database handler instance
- * @param {string|Float32Array} query - Search query (text or embedding vector)
- * @param {number} limit - Maximum number of results
- * @returns {Array} - Array of {id, score} objects
- */
 async function search(
   db: typeof DatabaseHandler, 
   query: string | Float32Array, 
@@ -160,7 +151,7 @@ async function search(
   if (results.length > 0) {
     console.log('[AI Search] Top 3 results:', results.slice(0, 3).map(r => `id=${r.id} score=${r.score.toFixed(4)}`));
   } else {
-    console.warn('[AI Search] ⚠️ NO RESULTS FOUND - Check if documents are indexed');
+    console.warn('[AI Search] NO RESULTS FOUND, check if documents are indexed');
   }
   
   return results;

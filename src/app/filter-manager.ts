@@ -15,7 +15,7 @@ export class FilterManager {
       }
 
       if (Array.isArray(obj)) {
-        // Per gli array, estrai i valori da ogni elemento
+        // Extract values from each array element
         obj.forEach((item, index) => {
           if (typeof item === 'object' && item !== null) {
             traverse(item, prefix);
@@ -28,15 +28,15 @@ export class FilterManager {
           }
         });
       } else {
-        // Per gli oggetti, naviga in profondità
+        // For objects, navigate deeply
         Object.keys(obj).forEach((k) => {
           const value = obj[k];
-          // Rimuovi il prefisso @ da attributi XML (es: @_isPrimary → isPrimary)
+          // Remove the @ prefix from XML attributes (e.g., @_isPrimary → isPrimary)
           const cleanKey = k.replace(/^@_/, '');
           const newPrefix = prefix ? `${prefix}.${cleanKey}` : cleanKey;
 
           if (Array.isArray(value)) {
-            // Estrai i valori da ogni elemento dell'array
+            // Extract values from each array element
             value.forEach((item) => {
               if (typeof item === 'object' && item !== null) {
                 traverse(item, newPrefix);
@@ -50,13 +50,13 @@ export class FilterManager {
           } else if (typeof value === 'object' && value !== null) {
             traverse(value, newPrefix);
           } else {
-            // Valore primitivo: aggiungi sia con chiave completa che semplice
+            // Primitive value, add to map
             if (!flatMap.has(cleanKey)) {
               flatMap.set(cleanKey, []);
             }
             flatMap.get(cleanKey)!.push(value);
 
-            // Aggiungi anche con prefisso completo se esiste
+            // Also add with full prefix if it exists
             if (newPrefix !== cleanKey && !flatMap.has(newPrefix)) {
               flatMap.set(newPrefix, []);
             }
@@ -74,24 +74,24 @@ export class FilterManager {
 
   static matchesFilters(flatMetadata: Map<string, any[]>, filters: Filter[]): boolean {
     if (filters.length === 0) {
-      return true; // Nessun filtro = passa tutto
+      return true; // No filters = pass all
     }
 
-    // Tutti i filtri devono essere soddisfatti (AND logic)
+    // All filters must be satisfied (AND logic)
     return filters.every((filter) => {
       const { key, value } = filter;
 
       if (!key || !value) {
-        return true; // Filtro vuoto non limita
+        return true; // Empty filter does not restrict
       }
 
       const values = flatMetadata.get(key);
 
       if (!values || values.length === 0) {
-        return false; // Chiave non trovata = non matcha
+        return false; // Key not found = does not match
       }
 
-      // Almeno un valore deve contenere la stringa di ricerca (case-insensitive)
+      // At least one value must contain the search string (case-insensitive)
       return values.some((v) =>
         String(v).toLowerCase().includes(value.toLowerCase())
       );
@@ -108,17 +108,13 @@ export class FilterManager {
       });
     });
 
-    // Ordina le chiavi per miglior UX
+    // Sort keys for better UX
     return Array.from(keySet).sort();
   }
 
-  /**
-   * Applica i filtri ad un'intera lista di metadati.
-   * Restituisce solo i metadati che matchano TUTTI i criteri di filtro.
-   */
   static filterMetadataList(metadataList: any[], filters: Filter[]): any[] {
     if (filters.every((f) => !f.key || !f.value)) {
-      return metadataList; // Nessun filtro attivo
+      return metadataList; // No active filters
     }
 
     return metadataList.filter((metadata) => {
@@ -127,22 +123,15 @@ export class FilterManager {
     });
   }
 
-  /**
-   * Estrae il nome significativo da una chiave gerarchica.
-   * 
-   * Esempio:
-   * "Document.DocumentoInformatico.DatiDiRegistrazione.TipoRegistro.Repertorio_Registro.NumeroRegistrazioneDocumento"
-   * → "NumeroRegistrazioneDocumento"
-   */
   static getSignificantName(fullPath: string): string {
     const parts = fullPath.split('.');
     return parts[parts.length - 1];
   }
 
   /**
-   * Estrae il percorso per il raggruppamento (tutto tranne l'ultimo segment).
+   * Extracts the path for grouping (everything except the last segment).
    * 
-   * Esempio:
+   * Example:
    * "Document.DocumentoInformatico.DatiDiRegistrazione.TipoRegistro.Repertorio_Registro.NumeroRegistrazioneDocumento"
    * → "Document.DocumentoInformatico.DatiDiRegistrazione.TipoRegistro.Repertorio_Registro"
    */
@@ -153,38 +142,23 @@ export class FilterManager {
   }
 
   /**
-   * Estrae il nome del gruppo (ultimo segment del percorso di raggruppamento).
+   * Extracts the group name (last segment of the grouping path).
    * 
-   * Esempio:
+   * Example:
    * "Document.DocumentoInformatico.DatiDiRegistrazione.TipoRegistro.Repertorio_Registro.NumeroRegistrazioneDocumento"
    * → "Repertorio_Registro"
    */
   static getGroupLabel(fullPath: string): string {
     const groupPath = this.getGroupPath(fullPath);
-    if (!groupPath) return 'Altro';
+    if (!groupPath) return 'Other';
     const parts = groupPath.split('.');
     return parts[parts.length - 1];
   }
 
-  /**
-   * Organizza le chiavi in un array di gruppi per la visualizzazione in optgroup.
-   * 
-   * CONSOLIDAMENTO DUPLICATI:
-   * Se lo stesso "nome significativo" appare in più sezioni/percorsi,
-   * viene consolidato in un'unica opzione. Il valore selezionato è il nome significativo,
-   * e la ricerca si applicherà a tutti i fullPath associati.
-   * 
-   * Esempio:
-   * - Document.PF.CodiceFiscale
-   * - Document.DatiAllegati.PF.CodiceFiscale
-   * → Diventa una sola opzione "CodiceFiscale" nella sezione "PF"
-   * 
-   * Ritorna un array dove ogni elemento rappresenta un optgroup con le sue opzioni.
-   */
   static groupKeysForSelect(
     keys: string[]
   ): { groupLabel: string; groupPath: string; options: Array<{ value: string; label: string }> }[] {
-    // Mappa temporanea per consolidare per nome significativo
+    // Temporary map to consolidate by significant name
     // significantName → { groupLabel, groupPath, fullPaths: [] }
     const consolidatedGroups = new Map<
       string,
@@ -201,7 +175,7 @@ export class FilterManager {
       const groupLabel = this.getGroupLabel(fullPath);
       const significantName = this.getSignificantName(fullPath);
 
-      // Usa il nome significativo come chiave di consolidamento
+      // Use the significant name as the consolidation key
       const consolidationKey = `${groupLabel}::${significantName}`;
 
       if (!consolidatedGroups.has(consolidationKey)) {
@@ -213,14 +187,14 @@ export class FilterManager {
         });
       }
 
-      // Aggiungi il fullPath alla lista (deduplicate automaticamente con Set se necessario)
+      // Add the fullPath to the list (deduplicate automatically with Set if necessary)
       const group = consolidatedGroups.get(consolidationKey)!;
       if (!group.fullPaths.includes(fullPath)) {
         group.fullPaths.push(fullPath);
       }
     });
 
-    // Converte in struttura di optgroup
+    // Convert to optgroup structure
     const groupsBySection = new Map<
       string,
       { groupLabel: string; groupPath: string; options: Array<{ value: string; label: string }> }
@@ -243,21 +217,10 @@ export class FilterManager {
       });
     });
 
-    // Converte la Map in array e ordina per nome del gruppo
+    // Convert the Map to an array and sort by group name
     return Array.from(groupsBySection.values()).sort((a, b) => a.groupLabel.localeCompare(b.groupLabel));
   }
 
-  /**
-   * Crea una mappa di tracciamento per i filtri consolidati.
-   * 
-   * Mappa: significantName → [fullPath1, fullPath2, ...]
-   * 
-   * Usata dal database service per espandere i filtri durante la ricerca.
-   * Quando l'utente cerca con "CodiceFiscale", la ricerca si applica a:
-   * - Document.PF.CodiceFiscale
-   * - Document.DatiAllegati.PF.CodiceFiscale
-   * - Etc.
-   */
   static buildFilterConsolidationMap(keys: string[]): Map<string, string[]> {
     const map = new Map<string, string[]>();
 

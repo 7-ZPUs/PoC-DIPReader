@@ -5,7 +5,7 @@ import dbHandler from './db-handler';
 import IndexerMain from './indexer-main';
 import * as aiSearch from './ai-search';
 
-// 1. Registra il protocollo come "Secure" PRIMA che l'app sia ready
+// 1. Registra il protocollo come "Secure" PRIMA che l'app sia pronta. Questo evita problemi di fetch quando si apre un file da fs (preview del file)
 protocol.registerSchemesAsPrivileged([
     { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ]);
@@ -32,7 +32,7 @@ function createWindow(): void {
             relativePath = 'index.html';
         }
 
-        // Costruisci il path assoluto (assicurati che il path alla dist sia corretto)
+        // Costruisci il path assoluto
         const filePath = path.join(app.getAppPath(), 'dist/DipReader/browser', relativePath);
 
         try {
@@ -64,10 +64,6 @@ function getContentType(filePath: string): string {
     return 'application/octet-stream';
 }
 
-// ============================================
-// Helper Functions
-// ============================================
-
 /**
  * Generate semantic embeddings for all documents in the database
  * @param {Object} db - Database handler instance
@@ -76,7 +72,6 @@ async function generateSemanticEmbeddings(db: typeof dbHandler): Promise<{ succe
     console.log('[Semantic] Starting semantic indexing...');
     
     try {
-        // Initialize AI model if not already initialized
         await aiSearch.initialize();
         
         // Query to get all documents with their metadata
@@ -378,7 +373,6 @@ ipcMain.handle('file:open-in-window', async (_event: IpcMainInvokeEvent, filePat
         // For PDFs and other files that browsers can display
         fileWindow.loadFile(filePath);
         
-        // Remove menu bar for cleaner look
         fileWindow.setMenuBarVisibility(false);
         
         return { success: true };
@@ -439,7 +433,7 @@ function getMimeType(filePath: string): string {
 }
 
 // ============================================
-// AI Semantic Search IPC Handlers (CORRETTO)
+// AI Semantic Search IPC Handlers
 // ============================================
 
 // Initialize AI model
@@ -460,25 +454,25 @@ ipcMain.handle('ai:search', async (_event: IpcMainInvokeEvent, data: any) => {
     let query: string | Float32Array | any;
     let requestId: string | null = null;
 
-    // LOGICA DI ESTRAZIONE ROBUSTA
+    // Robust extraction logic
     if (Array.isArray(data)) {
-        // CASO 1: È un Array (Vettore embedding) -> Usalo direttamente
+        // CASE 1: It's an Array (Embedding vector) -> Use it directly
         query = new Float32Array(data);
         console.log('[IPC] Search input: Vector/Array');
     } else if (typeof data === 'object' && data !== null && 'query' in data) {
-        // CASO 2: È un Oggetto { query: ..., requestId: ... }
+        // CASE 2: It's an Object { query: ..., requestId: ... }
         query = data.query;
         requestId = data.requestId;
         console.log('[IPC] Search input: Object with requestId');
     } else {
-        // CASO 3: È una Stringa (o altro primitivo)
+        // CASE 3: It's a String (or other primitive)
         query = data;
         console.log('[IPC] Search input: String/Raw');
     }
 
     if (!query || (Array.isArray(query) && query.length === 0)) {
-        console.error('[IPC] AI Search: Query vuota o invalida ricevuta', data);
-        return { requestId, status: 'error', error: 'Query vuota' };
+        console.error('[IPC] AI Search: Empty or invalid query received', data);
+        return { requestId, status: 'error', error: 'Empty query' };
     }
 
     try {
@@ -506,7 +500,6 @@ ipcMain.handle('ai:generate-embedding', async (_event: IpcMainInvokeEvent, data:
 
 // Index a document
 ipcMain.handle('ai:index', async (_event: IpcMainInvokeEvent, data: any) => {
-    // Qui ci aspettiamo sempre un oggetto {id, text}
     try {
         const { id, text } = data;
         const result = await aiSearch.indexDocument(id, text);
@@ -545,14 +538,14 @@ ipcMain.handle('ai:reindex-all', async (_event: IpcMainInvokeEvent, data: any) =
 
 ipcMain.handle('dialog:show-message', async (event: IpcMainInvokeEvent, options: { message: string; type?: string }) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    // Mostra il dialog nativo
+
     await dialog.showMessageBox(win!, {
         type: (options.type as any) || 'info',
         title: 'DIP Reader',
         message: options.message,
         buttons: ['OK']
     });
-    // Quando si chiude, Electron gestisce il focus automaticamente
+
     return true;
 });
 

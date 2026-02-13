@@ -105,10 +105,9 @@ class DatabaseHandler {
       `);
 
       this.vssEnabled = true;
-      console.log('[DB Handler] ✅ sqlite-vss extension loaded successfully - using optimized vector search');
+      console.log('[DB Handler] sqlite-vss extension loaded successfully - using optimized vector search');
     } catch (e) {
-      console.error('[DB Handler] ❌ Error loading sqlite-vss extension:', (e as Error).message);
-      console.warn('[DB Handler] ⚠️  Falling back to BLOB storage (brute-force search)');
+      console.error('[DB Handler] Error loading sqlite-vss extension:', (e as Error).message);
 
       // Fallback: create simple blob table
       this.db.exec(`
@@ -156,13 +155,13 @@ class DatabaseHandler {
         this.db.prepare('DELETE FROM vss_documents WHERE rowid = ?').run(docId);
         this.db.prepare('INSERT INTO vss_documents(rowid, embedding) VALUES (?, ?)').run(docId, vectorJson);
 
-        console.log(`[DB Handler] ✅ Saved vector for doc_id: ${docId} in vss_documents (${vectorArray.length} dimensions)`);
+        console.log(`[DB Handler] Saved vector for doc_id: ${docId} in vss_documents (${vectorArray.length} dimensions)`);
       } else {
         // Fallback: BLOB storage
         const buffer = Buffer.from(vector.buffer);
         this.db.prepare('INSERT OR REPLACE INTO document_vectors (doc_id, embedding) VALUES (?, ?)').run(docId, buffer);
 
-        console.log(`[DB Handler] ✅ Saved vector for doc_id: ${docId} in document_vectors (BLOB fallback)`);
+        console.log(`[DB Handler] Saved vector for doc_id: ${docId} in document_vectors (BLOB fallback)`);
       }
     } catch (e) {
       console.error('[DB Handler] Error saving vector:', e);
@@ -228,7 +227,7 @@ class DatabaseHandler {
         }));
       } else {
         // Fallback: brute-force search with BLOB vectors
-        console.warn('[DB Handler] Using fallback brute-force vector search (slower)');
+        console.warn('[DB Handler] Using fallback brute-force vector search');
 
         const rows = this.db.prepare('SELECT doc_id, embedding FROM document_vectors').all() as BlobVectorRow[];
         const results: Array<{ id: number; score: number }> = [];

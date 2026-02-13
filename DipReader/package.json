@@ -5,6 +5,7 @@
   "scripts": {
     "electron": "ng build --base-href / && electron .",
     "electron:ubuntu": "ng build --base-href / && electron . --disable-gpu --no-sandbox",
+    "electron:ubuntuL": "ng build --base-href / && electron . --ozone-platform=x11",
     "electron:rebuild": "electron-rebuild -f -w better-sqlite3 && electron-rebuild -f -w onnxruntime-node",
     "dist": "ng build --configuration production --base-href / && electron-builder",
     "clean": "rm -rf dist dist-electron node_modules/.vite"

@@ -3,6 +3,8 @@
   "version": "0.0.0",
   "main": "main.js",
   "scripts": {
+    "setup:models": "node download-models.js",
+    "setup": "npm install && npm run setup:models",
     "electron": "ng build --base-href / && electron .",
     "electron:ubuntu": "ng build --base-href / && electron . --disable-gpu --no-sandbox",
     "electron:ubuntuL": "ng build --base-href / && electron . --ozone-platform=x11",

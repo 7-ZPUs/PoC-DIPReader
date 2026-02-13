@@ -1,4 +1,3 @@
-// indexer-main.ts - Main process indexer using Node.js fs
 import * as fs from 'fs';
 import * as path from 'path';
 import { DOMParser } from 'xmldom';

@@ -5,7 +5,7 @@ import dbHandler from './db-handler';
 import IndexerMain from './indexer-main';
 import * as aiSearch from './ai-search';
 
-// 1. Registra il protocollo come "Secure" PRIMA che l'app sia pronta. Questo evita problemi di fetch quando si apre un file da fs (preview del file)
+// 1. Register the protocol as "Secure" BEFORE the app is ready. This avoids fetch issues when opening a file from fs (file preview)
 protocol.registerSchemesAsPrivileged([
     { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ]);
@@ -21,18 +21,18 @@ function createWindow(): void {
         }
     });
 
-    // 2. Gestisci la richiesta dei file e inietta gli header COOP/COEP
+    // 2. Handle file requests and inject COOP/COEP headers
     protocol.handle('app', async (request) => {
         const url = new URL(request.url);
-        // Prende solo il percorso (es. /index.html) ignorando l'hostname 'localhost'
+        // Only take the path (e.g., /index.html) ignoring the hostname 'localhost'
         let relativePath = url.pathname;
 
-        // Se il path è vuoto o root, punta a index.html
+        // If the path is empty or root, point to index.html
         if (relativePath === '/' || relativePath === '') {
             relativePath = 'index.html';
         }
 
-        // Costruisci il path assoluto
+        // Build the absolute path
         const filePath = path.join(app.getAppPath(), 'dist/DipReader/browser', relativePath);
 
         try {
@@ -45,16 +45,16 @@ function createWindow(): void {
                 }
             });
         } catch (e) {
-            console.error(`[Protocol] Errore nel caricamento di ${filePath}:`, e);
-            // Ritorna un 404 invece di crashare il protocollo
-            return new Response('File non trovato', { status: 404 });
+            console.error(`[Protocol] Error loading ${filePath}:`, e);
+            // Return a 404 instead of crashing the protocol
+            return new Response('File not found', { status: 404 });
         }
     });
 
     mainWindow.loadURL('app://localhost');
 }
 
-// Funzione helper per i MIME types
+// Helper function for MIME types
 function getContentType(filePath: string): string {
     const ext = path.extname(filePath);
     if (ext === '.js') return 'text/javascript';
@@ -64,10 +64,6 @@ function getContentType(filePath: string): string {
     return 'application/octet-stream';
 }
 
-/**
- * Generate semantic embeddings for all documents in the database
- * @param {Object} db - Database handler instance
- */
 async function generateSemanticEmbeddings(db: typeof dbHandler): Promise<{ success: boolean; indexed: number; total: number }> {
     console.log('[Semantic] Starting semantic indexing...');
     
@@ -75,7 +71,7 @@ async function generateSemanticEmbeddings(db: typeof dbHandler): Promise<{ succe
         await aiSearch.initialize();
         
         // Query to get all documents with their metadata
-        // Include ALL metadata for better semantic search (not just CategoriaProdotto)
+        // Include all metadata for better semantic search (not just CategoriaProdotto)
         const docs = db.executeQuery(`
             SELECT 
                 d.id,
@@ -129,7 +125,7 @@ async function generateSemanticEmbeddings(db: typeof dbHandler): Promise<{ succe
 }
 
 // ============================================
-// IPC Handlers for Database Operations
+// IPC Handlers for database operations
 // ============================================
 
 // Initialize database

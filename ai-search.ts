@@ -1,5 +1,3 @@
-// ai-search.ts - Semantic Search with Transformers.js in Electron Main Process
-// Using sqlite-vss for vector storage and search (no in-memory cache needed)
 import { pipeline, env } from '@xenova/transformers';
 import * as path from 'node:path';
 import { app } from 'electron';

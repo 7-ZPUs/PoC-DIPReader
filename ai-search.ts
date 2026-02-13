@@ -7,10 +7,6 @@ import * as os from 'node:os';
 import * as fs from 'node:fs';
 import type DatabaseHandler from './db-handler';
 
-// ============================================================================
-// CONFIGURATION
-// ============================================================================
-
 const isDev = !app.isPackaged;
 const modelsPath = isDev 
   ? path.join(__dirname, 'assets', 'models')
@@ -33,16 +29,8 @@ if (env.backends.onnx.wasm) {
 console.log('[AI Search] Models path:', modelsPath);
 console.log('[AI Search] Using onnxruntime-node with', numThreads, 'threads');
 
-// ============================================================================
-// STATE
-// ============================================================================
-
 let embedder: any | null = null;
 let isInitialized: boolean = false;
-
-// ============================================================================
-// INTERFACES
-// ============================================================================
 
 interface InitializeResult {
   status: string;
@@ -63,10 +51,6 @@ interface StateResult {
   initialized: boolean;
   indexedDocuments: number;
 }
-
-// ============================================================================
-// 4. CORE FUNCTIONS
-// ============================================================================
 
 async function initialize(): Promise<InitializeResult> {
   if (isInitialized) return { status: 'already_initialized' };

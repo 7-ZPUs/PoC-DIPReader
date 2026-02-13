@@ -1,12 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * Script per scaricare i modelli ONNX quantizzati da Hugging Face
- * 
- * Scarica il modello paraphrase-multilingual-MiniLM-L12-v2 nella cartella
- * assets/models/Xenova/paraphrase-multilingual-MiniLM-L12-v2/onnx
- */
-
 import * as https from 'https';
 import * as http from 'http';
 import * as fs from 'fs';
@@ -90,7 +83,7 @@ function downloadFile(url: string, targetPath: string, filename: string): Promis
 
         file.on('finish', () => {
           file.close();
-          console.log(`\n${colors.green}✓ Download completato: ${filename}${colors.reset}`);
+          console.log(`\n${colors.green} Download completato: ${filename}${colors.reset}`);
           resolve(fullPath);
         });
 
@@ -125,13 +118,13 @@ function ensureDirectories() {
  * Main: esegui il download dei modelli
  */
 async function main(): Promise<void> {
-  console.log(`${colors.yellow}🤖 Inizio download dei modelli ONNX...${colors.reset}\n`);
+  console.log(`${colors.yellow} Inizio download dei modelli ONNX...${colors.reset}\n`);
 
   try {
     const baseDir = ensureDirectories();
 
     for (const model of MODELS) {
-      console.log(`${colors.blue}\n📦 Elaborazione modello: ${model.name}${colors.reset}`);
+      console.log(`${colors.blue}\n Elaborazione modello: ${model.name}${colors.reset}`);
 
       const modelOnnxDir = path.join(baseDir, model.name, 'onnx');
 
@@ -149,10 +142,10 @@ async function main(): Promise<void> {
       }
     }
 
-    console.log(`\n${colors.green}✅ Download completato con successo!${colors.reset}`);
+    console.log(`\n${colors.green} Download completato con successo!${colors.reset}`);
     console.log(`${colors.blue}I modelli sono disponibili in: assets/models/Xenova/${colors.reset}`);
   } catch (error) {
-    console.error(`\n${colors.red}❌ Errore durante il download: ${(error as Error).message}${colors.reset}`);
+    console.error(`\n${colors.red} Errore durante il download: ${(error as Error).message}${colors.reset}`);
     process.exit(1);
   }
 }

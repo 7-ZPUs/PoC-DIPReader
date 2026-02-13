@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { DatabaseService, FileNode } from './services/database-electron.service';
 import { MetadataViewerComponent } from './metadata-viewer.component';
 import { Filter } from './filter-manager';
+import './types/electron-api.types';
 
 import { SearchService } from './services/search.service';
 import { FileIntegrityService } from './services/file-integrity.service';

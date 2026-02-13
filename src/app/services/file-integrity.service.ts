@@ -3,6 +3,7 @@ import { DatabaseService } from './database-electron.service';
 import { IntegrityCheckResult, SavedIntegrityStatus } from '../models/integrity-check';
 import { FileService } from './file.service';
 import { MetadataService } from './metadata.service';
+import '../types/electron-api.types';
 
 @Injectable({ providedIn: 'root' })
 export class FileIntegrityService {

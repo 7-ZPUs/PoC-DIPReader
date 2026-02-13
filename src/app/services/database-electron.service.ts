@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Filter } from '../filter-manager';
+import '../types/electron-api.types';
 
 export interface FileNode {
   name: string;
@@ -8,45 +9,6 @@ export interface FileNode {
   expanded?: boolean;
   fileId?: number;
   documentId?: number;
-}
-
-// Type definitions for the Electron API
-declare global {
-  interface Window {
-    electronAPI: {
-      db: {
-        init: () => Promise<{ status: string }>;
-        open: (dipUUID: string) => Promise<{ success: boolean; dipUUID: string; existed: boolean }>;
-        index: (dipUUID: string, dipPath: string) => Promise<{ success: boolean; dipUUID: string }>;
-        query: (sql: string, params?: any[]) => Promise<any>;
-        list: () => Promise<string[]>;
-        delete: (dipUUID: string) => Promise<{ success: boolean }>;
-        export: (exportPath?: string) => Promise<{ success: boolean; path?: string; canceled?: boolean }>;
-        info: () => Promise<{ open: boolean; dipUUID?: string; fileCount?: number; documentCount?: number }>;
-      };
-      dip: {
-        selectDirectory: () => Promise<{ canceled: boolean; path?: string }>;
-      };
-      file: {
-        read: (filePath: string) => Promise<{ success: boolean; data: ArrayBuffer; mimeType: string }>;
-        openExternal: (filePath: string) => Promise<{ success: boolean; error?: string }>;
-        openInWindow: (filePath: string) => Promise<{ success: boolean; error?: string }>;
-        download: (filePath: string) => Promise<{ success: boolean; canceled?: boolean; savedPath?: string; error?: string }>;
-      };
-      ai: {
-        init: (payload?: any) => Promise<{ status: string }>;
-        index: (data: any) => Promise<{ status: string; id: number }>;
-        generateEmbedding: (data: any) => Promise<any>;
-        search: (data: any) => Promise<any>;
-        reindexAll: (data: any) => Promise<{ status: string; indexed: number }>;
-        state: () => Promise<{ initialized: boolean; indexedDocuments: number }>;
-        clear: () => Promise<{ status: string }>;
-      };
-      utils: {
-        showMessage: (message: string, type?: 'info' | 'error' | 'warning') => Promise<boolean>;
-      };
-    };
-  }
 }
 
 @Injectable({ providedIn: 'root' })

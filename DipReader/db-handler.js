@@ -97,15 +97,16 @@ class DatabaseHandler {
 
   /**
    * Create database schema from schema.sql file
+   * schema.sql is in the root directory alongside other Node.js files (main.js, db-handler.js)
    */
   createSchema() {
-    const schemaPath = path.join(__dirname, 'public', 'schema.sql');
+    const schemaPath = path.join(__dirname, 'schema.sql');
 
     if (!fs.existsSync(schemaPath)) {
-      // Try alternative path
-      const altSchemaPath = path.join(__dirname, 'src', 'db', 'schema.sql');
-      if (fs.existsSync(altSchemaPath)) {
-        const schema = fs.readFileSync(altSchemaPath, 'utf-8');
+      // Try legacy path for backward compatibility
+      const legacySchemaPath = path.join(__dirname, 'public', 'schema.sql');
+      if (fs.existsSync(legacySchemaPath)) {
+        const schema = fs.readFileSync(legacySchemaPath, 'utf-8');
         this.db.exec(schema);
         this.db.exec(`
       CREATE TABLE IF NOT EXISTS document_vectors (
@@ -113,7 +114,7 @@ class DatabaseHandler {
         embedding BLOB
       );
     `);
-        console.log('[DB Handler] Schema created from src/db/schema.sql');
+        console.log('[DB Handler] Schema created from legacy public/schema.sql');
         return;
       }
       throw new Error('Schema file not found');

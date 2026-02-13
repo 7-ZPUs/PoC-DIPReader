@@ -67,7 +67,7 @@
       "indexer-main.js",
       "ai-search.js",
       "package.json",
-      "public/schema.sql"
+      "schema.sql"
     ],
     "extraResources": [
       {

@@ -1,0 +1,265 @@
+/* ============================================
+   Layout Principale
+   ============================================ */
+.container {
+  display: flex;
+  height: 100vh;
+  font-family: sans-serif;
+}
+
+.sidebar {
+  width: 400px;
+  border-right: 1px solid #ccc;
+  overflow-y: auto;
+  padding: 10px;
+  background: #f5f5f5;
+  flex-shrink: 0;
+}
+
+.main {
+  flex: 1;
+  padding: 20px;
+  overflow-x: auto;
+  min-width: 0;
+}
+
+/* ============================================
+   Albero dei File
+   ============================================ */
+ul {
+  list-style-type: none;
+  padding-left: 20px;
+}
+
+li {
+  cursor: pointer;
+  margin: 2px 0;
+}
+
+.is-folder {
+  font-weight: bold;
+  color: #333;
+}
+
+.is-file {
+  color: #0066cc;
+}
+
+/* ============================================
+   Pannello di Ricerca
+   ============================================ */
+.search-box {
+  background: #e9ecef;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.search-input,
+.filter-select,
+.filter-input {
+  width: 100%;
+  padding: 5px;
+  margin-bottom: 5px;
+  box-sizing: border-box;
+  font-size: 0.85rem;
+}
+
+/* Stili optgroup nella select */
+.filter-select optgroup {
+  font-weight: bold;
+  color: #333;
+  padding: 5px;
+}
+
+.filter-select option {
+  padding-left: 15px;
+  color: #333;
+  font-weight: normal;
+}
+
+/* ============================================
+   Header Filtri Globali
+   ============================================ */
+.filter-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #495057;
+}
+
+.filter-title {
+  font-size: 0.9rem;
+}
+
+.filter-info {
+  cursor: help;
+  color: #0066cc;
+  font-weight: bold;
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
+.filter-info:hover {
+  opacity: 1;
+}
+
+/* ============================================
+   Riga Filtri
+   ============================================ */
+.filter-row {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 5px;
+  align-items: center;
+}
+
+.filter-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ============================================
+   Azioni Ricerca
+   ============================================ */
+.search-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+}
+
+.right-actions {
+  display: flex;
+  gap: 5px;
+}
+
+/* ============================================
+   Statistiche Ricerca
+   ============================================ */
+.search-stats {
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  color: #155724;
+  text-align: center;
+}
+
+/* ============================================
+   Pulsanti
+   ============================================ */
+.btn-small {
+  font-size: 0.8rem;
+  padding: 2px 5px;
+}
+
+.btn-primary {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.btn-icon.remove {
+  background: none;
+  border: none;
+  color: #dc3545;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.btn-debug {
+  margin-bottom: 10px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+/* ============================================
+   Barra Azioni File
+   ============================================ */
+.file-actions {
+  margin-bottom: 15px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ============================================
+   Badge Stato Integrità
+   ============================================ */
+.badge {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  font-weight: bold;
+  color: white;
+  white-space: nowrap;
+}
+
+.badge.loading {
+  background-color: #ffc107;
+  color: #333;
+}
+
+.badge.success {
+  background-color: #28a745;
+}
+
+.badge.error {
+  background-color: #dc3545;
+}
+
+/* ============================================
+   Data/Ora Verifica
+   ============================================ */
+.verification-time {
+  color: #666;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+/* ============================================
+   Metadati
+   ============================================ */
+.metadata-box {
+  background: #fff;
+  padding: 15px;
+  border: 1px solid #ddd;
+  margin-top: 20px;
+}
+
+.metadata-box pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.error-box {
+  border-color: #d9534f;
+  color: #d9534f;
+  background-color: #f2dede;
+}

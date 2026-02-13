@@ -1,0 +1,193 @@
+<div class="container">
+  <div class="sidebar">
+    <h3>Esplora DIP</h3>
+
+    <div class="semantic-playground" style="margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 8px; background: #f9f9f9;">
+  <h3>Laboratorio Semantico</h3>
+  
+  <div style="display: flex; gap: 10px;">
+    <input 
+      type="text" 
+      [(ngModel)]="semanticQuery" 
+      placeholder="Descrivi il concetto (es. 'Spese mediche', 'Fatture hardware')..."
+      style="flex: 1; padding: 8px;"
+      (keyup.enter)="onTestSemanticSearch()"
+    >
+    <button (click)="onTestSemanticSearch()" [disabled]="isCalculatingVector || !semanticQuery">
+      {{ isCalculatingVector ? 'Calcolo...' : 'Analizza & Cerca' }}
+    </button>
+  </div>
+
+  <div *ngIf="generatedVector" style="margin-top: 15px;">
+    <strong>Vettore Generato (Primi 50 valori di 384):</strong>
+    <div style="
+      background: #000; 
+      color: #0f0;
+      font-family: monospace;
+      font-size: 12px; 
+      padding: 10px; 
+      border-radius: 4px; 
+      height: 100px; 
+      overflow-y: auto;
+      word-break: break-all;
+    ">
+      [
+      <span *ngFor="let val of generatedVector.slice(0, 50); let last = last">
+        {{ val.toFixed(4) }}<span *ngIf="!last">, </span>
+      </span>
+      <span *ngIf="generatedVector.length > 50">... altri {{generatedVector.length - 50}} valori</span>
+      ]
+    </div>
+    <small style="color: #666;">Dimensione totale vettore: {{ generatedVector.length }} dimensioni</small>
+  </div>
+
+ <div *ngIf="semanticResults.length > 0" style="margin-top: 15px;">
+  <strong>Risultati trovati (per similarità):</strong>
+  <ul style="list-style: none; padding: 0;">
+    <li *ngFor="let res of semanticResults" 
+        (click)="onSemanticResultClick(res)"
+        class="semantic-item"
+        style="
+          padding: 10px; 
+          border-bottom: 1px solid #eee; 
+          cursor: pointer; 
+          transition: background 0.2s;
+        "
+        onmouseover="this.style.background='#f0f8ff'"
+        onmouseout="this.style.background='transparent'"
+    >
+      <div style="display: flex; justify-content: space-between; align-items: start;">
+        <div style="flex: 1;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span>📄</span>
+            <span style="font-weight: 600; color: #1976d2;">{{ res.name }}</span>
+          </div>
+          <div style="font-size: 0.85em; color: #666; margin-left: 28px;">
+            <div><strong>AiP:</strong> {{ res.aipName }}</div>
+            <div *ngIf="res.metadata && getMetadataPreview(res.metadata)" style="margin-top: 2px;">
+              {{ getMetadataPreview(res.metadata) }}
+            </div>
+          </div>
+        </div>
+
+        <span style="background: #e1f5fe; color: #0277bd; padding: 4px 10px; border-radius: 12px; font-size: 0.8em; font-weight: 600; white-space: nowrap; margin-left: 10px;">
+          {{ res.score }}
+        </span>
+      </div>
+    </li>
+  </ul>
+</div>
+</div>
+
+ <div *ngIf="semanticResults.length === 0" style="margin-top: 15px;">
+  <strong>NESSUN RISULTATO PER LA RICERCA SEMANTICA</strong>
+  <p style="color: #666;">Prova a modificare la descrizione o assicurati di avere file indicizzati con contenuti rilevanti.</p>
+</div>
+    
+    <!-- Pannello di Ricerca -->
+    <button (click)="runIndexer()" class="btn-primary" style="margin-bottom: 10px; width: 100%;">📂 Importa Directory</button>
+    <div class="search-box">
+      <input 
+        type="text" 
+        [(ngModel)]="searchName" 
+        placeholder="Cerca nome file..." 
+        (keyup.enter)="performSearch()" 
+        class="search-input">
+      
+      <!-- Intestazione Filtri Globali -->
+      <div class="filter-header">
+        <span class="filter-title">🔍 Filtri Globali</span>
+        <span class="filter-info" title="I filtri si applicano a TUTTI i file in modo uniforme">ⓘ</span>
+      </div>
+      
+      <!-- Riga Filtri Dinamica -->
+      <div *ngFor="let filter of filters; let i = index" class="filter-row">
+        <select [(ngModel)]="filter.key" class="filter-select">
+          <option value="" disabled selected>Seleziona campo...</option>
+          <optgroup *ngFor="let group of groupedFilterKeys" [label]="group.groupLabel">
+            <option *ngFor="let opt of group.options" [value]="opt.value">{{ opt.label }}</option>
+          </optgroup>
+        </select>
+        <input type="text" [(ngModel)]="filter.value" placeholder="Contiene..." class="filter-input">
+        <button (click)="removeFilter(i)" class="btn-icon remove" title="Rimuovi filtro">×</button>
+      </div>
+
+      <!-- Azioni di Ricerca -->
+      <div class="search-actions">
+        <button (click)="addFilter()" class="btn-small">+ Filtro</button>
+        <div class="right-actions">
+          <button (click)="performSearch()" class="btn-primary">Cerca</button>
+          <button *ngIf="isSearching" (click)="clearSearch()" class="btn-secondary">Reset</button>
+        </div>
+      </div>
+
+      <!-- Tempo di Esecuzione -->
+      <div *ngIf="searchExecutionTime !== null" class="search-stats">
+        Tempo di esecuzione: <strong>{{ searchExecutionTime.toFixed(2) }} ms</strong>
+      </div>
+    </div>
+
+    <hr>
+    <button (click)="downloadDb()" class="btn-debug">💾 Scarica DB Debug</button>
+    
+    <!-- Template Ricorsivo per l'Albero -->
+    <ng-template #recursiveList let-list>
+      <ul>
+        <li *ngFor="let node of list">
+          <div (click)="handleNodeClick(node)" 
+               [class.is-folder]="node.type === 'folder'"
+               [class.is-file]="node.type === 'file'"
+               [style.font-weight]="node === selectedFile ? 'bold' : 'normal'">
+            <span *ngIf="node.type === 'folder'">{{ node.expanded ? '📂' : '📁' }}</span>
+            <span *ngIf="node.type === 'file'">📄</span>
+            {{ node.name }}
+          </div>
+          <div *ngIf="node.type === 'folder' && node.expanded">
+            <ng-container *ngTemplateOutlet="recursiveList; context:{ $implicit: node.children }"></ng-container>
+          </div>
+        </li>
+      </ul>
+    </ng-template>
+
+    <!-- Visualizzazione Albero -->
+    <ng-container *ngTemplateOutlet="recursiveList; context:{ $implicit: fileTree }"></ng-container>
+  </div>
+
+  <!-- Pannello Principale -->
+  <div class="main">
+    <div *ngIf="selectedFile; else noFile">
+      <h2>{{ selectedFile.name }}</h2>
+      
+      <!-- Barra Azioni File (solo per nodi di tipo file) -->
+      <div class="file-actions" *ngIf="selectedFile.type === 'file' && selectedFile.fileId">
+        <button (click)="openFile(selectedFile)">Apri in Nuova Scheda</button>
+        <button (click)="downloadFile(selectedFile)">Scarica File</button>
+        <button (click)="checkIntegrity(selectedFile)">Verifica Integrità</button>
+        
+        <!-- Badge Stato Integrità -->
+        <span *ngIf="integrityStatus === 'loading'" class="badge loading">Verifica in corso...</span>
+        <span *ngIf="integrityStatus === 'valid'" class="badge success">✔ Integro (SHA-256)</span>
+        <span *ngIf="integrityStatus === 'invalid'" class="badge error">✖ Corrotto</span>
+        
+        <!-- Data Verifica -->
+        <small *ngIf="integrityVerifiedAt" class="verification-time">
+          Verificato: {{ formatDate(integrityVerifiedAt) }}
+        </small>
+      </div>
+      
+      <!-- Visualizzatore Metadati -->
+      <div class="metadata-container">
+        <h3>{{ selectedFile.type === 'folder' && selectedFile.documentId ? 'Proprietà del Documento' : 'Metadati' }}</h3>
+        <app-metadata-viewer 
+          [fileId]="selectedFile.fileId" 
+          [documentId]="selectedFile.documentId">
+        </app-metadata-viewer>
+      </div>
+    </div>
+
+    <!-- Messaggio Nessun File Selezionato -->
+    <ng-template #noFile>
+      <p>Seleziona un documento o file dall'albero per visualizzarne i dettagli.</p>
+    </ng-template>
+  </div>
+</div>

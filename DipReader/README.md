@@ -76,7 +76,8 @@ Proof of Concept del Capitolato C3 - "DIP Reader: Applicazione per la gestione e
    npm run setup
    ```
 
-   > **Nota**: L'installazione potrebbe richiedere alcuni minuti per compilare i moduli nativi (better-sqlite3). questo comando scarica anche i modelli quantizzati da HuggingFace, più info nel README.mh della cartella src/assets/models
+   > **Nota**: L'installazione potrebbe richiedere alcuni minuti per compilare i moduli nativi (better-sqlite3).  
+   Questo comando scarica anche i modelli quantizzati da HuggingFace, più info nel README.md della cartella src/assets/models
 
 3. **Rebuild moduli nativi per Electron**
    ```bash

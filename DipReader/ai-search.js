@@ -11,7 +11,7 @@ const os = require('node:os');
 
 const isDev = !app.isPackaged;
 const modelsPath = isDev 
-  ? path.join(__dirname, 'dist', 'DipReader', 'browser', 'assets', 'models')
+  ? path.join(__dirname, 'assets', 'models')
   : path.join(process.resourcesPath, 'assets', 'models');
 
 // Configure for Node.js native ONNX runtime

@@ -4,7 +4,7 @@
  * Script per scaricare i modelli ONNX quantizzati da Hugging Face
  * 
  * Scarica il modello paraphrase-multilingual-MiniLM-L12-v2 nella cartella
- * src/assets/models/Xenova/paraphrase-multilingual-MiniLM-L12-v2/onnx
+ * assets/models/Xenova/paraphrase-multilingual-MiniLM-L12-v2/onnx
  */
 
 const https = require('https');
@@ -98,7 +98,7 @@ function downloadFile(url, targetPath, filename) {
  * Crea la struttura di cartelle necessaria
  */
 function ensureDirectories() {
-  const baseDir = path.join(__dirname, 'src/assets/models/Xenova');
+  const baseDir = path.join(__dirname, 'assets/models/Xenova');
 
   for (const model of MODELS) {
     const modelDir = path.join(baseDir, model.name, 'onnx');
@@ -140,7 +140,7 @@ async function main() {
     }
 
     console.log(`\n${colors.green}✅ Download completato con successo!${colors.reset}`);
-    console.log(`${colors.blue}I modelli sono disponibili in: src/assets/models/Xenova/${colors.reset}`);
+    console.log(`${colors.blue}I modelli sono disponibili in: assets/models/Xenova/${colors.reset}`);
   } catch (error) {
     console.error(`\n${colors.red}❌ Errore durante il download: ${error.message}${colors.reset}`);
     process.exit(1);

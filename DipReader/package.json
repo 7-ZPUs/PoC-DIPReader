@@ -15,7 +15,7 @@
     "dev:ubuntu": "npm run build && npm run start:ubuntu",
     "dev:ubuntu-x11": "npm run build && npm run start:ubuntu-x11",
     "rebuild": "electron-rebuild -f -w better-sqlite3 && electron-rebuild -f -w onnxruntime-node",
-    "dist": "npm run build:prod && electron-builder",
+    "dist": "ng build --configuration production --base-href / && electron-builder",
     "clean": "rm -rf dist dist-main dist-electron node_modules/.vite"
   },
   "prettier": {
@@ -78,7 +78,7 @@
     ],
     "extraResources": [
       {
-        "from": "dist/DipReader/browser/assets/models",
+        "from": "dist-main/assets/models",
         "to": "assets/models",
         "filter": [
           "**/*"

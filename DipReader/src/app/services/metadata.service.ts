@@ -1,9 +1,20 @@
 import { Injectable } from '@angular/core';
-import { DatabaseService } from '../database-electron.service';
+import { DatabaseService } from './database-electron.service';
 
 /**
  * Gestione e manipolazione dei metadati
- * Centralizza accesso, ricerca e elaborazione dei metadati dei file
+ * 
+ * RESPONSIBILITIES:
+ * - Metadata retrieval (file-level and document-level)
+ * - Metadata value lookups with fallback logic
+ * - Metadata parsing and type conversion
+ * - Hash (Impronta) retrieval from metadata
+ * 
+ * DEPENDENCIES:
+ * - DatabaseService: for executing queries only
+ * 
+ * NOTE: This is the SINGLE source of truth for metadata operations.
+ * Other services should use this service rather than querying metadata directly.
  */
 @Injectable({ providedIn: 'root' })
 export class MetadataService {
@@ -23,15 +34,42 @@ export class MetadataService {
 
   /**
    * Get a specific metadata value by key
+   * Tries file-specific metadata first, then falls back to document-level metadata
    */
   async getMetadataValue(fileId: number, key: string): Promise<string | undefined> {
-    const metadata = await this.getMetadata(fileId);
-    const value = this.findValueByKey(metadata, key);
-    return value || undefined;
+    // First: try file-specific metadata
+    const fileMetadata = await this.dbService.executeQuery<Array<{ meta_value: string }>>(
+      `SELECT meta_value FROM metadata WHERE meta_key = ? AND file_id = ?`,
+      [key, fileId]
+    );
+    
+    if (fileMetadata?.length > 0) {
+      return fileMetadata[0].meta_value;
+    }
+
+    // Fallback: try document-level metadata
+    const fileRow = await this.dbService.executeQuery<Array<{ document_id: number }>>(
+      `SELECT document_id FROM file WHERE id = ?`,
+      [fileId]
+    );
+    
+    if (fileRow?.length > 0) {
+      const docMetadata = await this.dbService.executeQuery<Array<{ meta_value: string }>>(
+        `SELECT meta_value FROM metadata WHERE meta_key = ? AND document_id = ? AND file_id IS NULL`,
+        [key, fileRow[0].document_id]
+      );
+      
+      if (docMetadata?.length > 0) {
+        return docMetadata[0].meta_value;
+      }
+    }
+
+    return undefined;
   }
 
   /**
-   * Get expected hash from metadata
+   * Get expected hash from metadata (Impronta field)
+   * This is a convenience method for integrity checking
    */
   async getExpectedHash(fileId: number): Promise<string | null> {
     const hash = await this.getMetadataValue(fileId, 'Impronta');
@@ -131,8 +169,9 @@ export class MetadataService {
 
   /**
    * Utility: Find value by key in a metadata object
+   * This is the centralized metadata key lookup - other services should use this
    */
-  private findValueByKey(metadata: Record<string, any>, key: string): string | null {
+  findValueByKey(metadata: Record<string, any>, key: string): string | null {
     return metadata[key] || null;
   }
 }

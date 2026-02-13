@@ -105,13 +105,19 @@ async function search(db, query, limit = 10) {
   if (!embedder) throw new Error('Model not initialized');
   if (!db) throw new Error('Database not provided');
 
+  console.log('[AI Search] Search query type:', typeof query, 'length:', query?.length || 0);
+
   let queryVector;
   try {
     if (typeof query === 'string') {
+      console.log(`[AI Search] Generating embedding for query: "${query}"`);
       const output = await embedder(query, { pooling: 'mean', normalize: true });
       queryVector = output.data;
+      console.log(`[AI Search] Generated query vector: ${queryVector.length} dimensions, first 3 values:`, 
+                  Array.from(queryVector).slice(0, 3));
     } else {
       queryVector = new Float32Array(query);
+      console.log(`[AI Search] Using provided vector: ${queryVector.length} dimensions`);
     }
   } catch (e) {
     console.error('[AI Search] Error creating embedding for query:', e);
@@ -120,7 +126,13 @@ async function search(db, query, limit = 10) {
 
   // Use db-handler's searchVectors method (sqlite-vss)
   const results = db.searchVectors(queryVector, limit);
-  console.log(`[AI Search] Found ${results.length} results via sqlite-vss`);
+  console.log(`[AI Search] Found ${results.length} results via database search`);
+  
+  if (results.length > 0) {
+    console.log('[AI Search] Top 3 results:', results.slice(0, 3).map(r => `id=${r.id} score=${r.score.toFixed(4)}`));
+  } else {
+    console.warn('[AI Search] ⚠️ NO RESULTS FOUND - Check if documents are indexed');
+  }
   
   return results;
 }

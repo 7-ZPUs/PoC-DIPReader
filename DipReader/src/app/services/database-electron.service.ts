@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { Filter } from './filter-manager';
+import { Filter } from '../filter-manager';
 
 export interface FileNode {
   name: string;
@@ -51,6 +51,28 @@ declare global {
 
 /**
  * Service for managing SQLite database via Electron IPC
+ * 
+ * CORE RESPONSIBILITIES:
+ * - Database connection management (init, open, close)
+ * - DIP directory indexing
+ * - Low-level SQL query execution (executeQuery)
+ * - Tree structure building (getTreeFromDb)
+ * - Basic document/file search by metadata (searchDocuments)
+ * - Database lifecycle (list, delete, export, info)
+ * 
+ * BOUNDARIES:
+ * - This service provides LOW-LEVEL database access
+ * - Business logic should be in specialized services:
+ *   * SearchService: for semantic search and filters
+ *   * MetadataService: for metadata operations
+ *   * FileService: for file operations
+ *   * FileIntegrityService: for integrity checks
+ * 
+ * DEPRECATED METHODS:
+ * - searchSemantic(): Use SearchService.searchSemantic()
+ * - getAvailableMetadataKeys(): Use SearchService.loadAvailableFilterKeys()
+ * - findValueByKey(): Use MetadataService.findValueByKey()
+ * 
  * Communicates with the main process for all database operations
  */
 @Injectable({ providedIn: 'root' })
@@ -346,10 +368,11 @@ export class DatabaseService {
   }
 
   /**
-   * Get available metadata keys for filters
-   * Maintained for backward compatibility - consider moving to SearchService
+   * @deprecated Use SearchService.loadAvailableFilterKeys() instead
+   * Maintained for backward compatibility only
    */
   async getAvailableMetadataKeys(): Promise<string[]> {
+    console.warn('DatabaseService.getAvailableMetadataKeys is deprecated. Use SearchService.loadAvailableFilterKeys instead.');
     const rows = await this.executeQuery<{ meta_key: string }[]>(`
       SELECT DISTINCT meta_key
       FROM metadata
@@ -442,37 +465,13 @@ export class DatabaseService {
     return Array.from(documentMap.values());
   }
 
+  /**
+   * @deprecated Use SearchService.searchSemantic() instead
+   * Semantic search logic has been moved to SearchService for better separation of concerns
+   */
   async searchSemantic(queryText: string): Promise<any[]> {
-    if (!queryText || queryText.trim() === '') return [];
-
-    console.log('[DatabaseService] Avvio ricerca semantica:', queryText);
-
-    try {
-      const response = await window.electronAPI.ai.search({
-        query: queryText,
-        requestId: Date.now()
-      });
-
-      let results = [];
-      if (Array.isArray(response)) {
-        results = response; // Caso legacy
-      } else if (response && response.results) {
-        results = response.results; // Caso nuovo protocollo
-      }
-
-      console.log('[DatabaseService] Risultati AI:', results);
-
-      if (results.length > 0) {
-        const docIds = results.map((r: any) => r.id);
-        return results;
-      }
-
-      return [];
-
-    } catch (error) {
-      console.error('[DatabaseService] Errore ricerca semantica:', error);
-      throw error; // Rilancia per gestire l'errore nella UI
-    }
+    console.warn('DatabaseService.searchSemantic is deprecated. Use SearchService.searchSemantic instead.');
+    throw new Error('Use SearchService.searchSemantic instead of DatabaseService.searchSemantic');
   }
 
 
@@ -536,7 +535,12 @@ export class DatabaseService {
     }));
   }
 
+  /**
+   * @deprecated Use MetadataService methods instead
+   * Metadata manipulation logic has been moved to MetadataService
+   */
   findValueByKey(metadata: Record<string, any>, key: string): string | null {
+    console.warn('DatabaseService.findValueByKey is deprecated. Use MetadataService instead.');
     return metadata[key] || null;
   }
 }

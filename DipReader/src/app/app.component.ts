@@ -1,7 +1,7 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DatabaseService, FileNode } from './database-electron.service';
+import { DatabaseService, FileNode } from './services/database-electron.service';
 import { MetadataViewerComponent } from './metadata-viewer.component';
 import { Filter } from './filter-manager';
 
@@ -50,13 +50,7 @@ export class AppComponent implements OnInit {
     private fileIntegrityService: FileIntegrityService,
     private fileService: FileService
   ) { 
-    console.log('App avviata. Attendo 5 secondi prima di indicizzare per l\'AI...');
-    
-    /*setTimeout(() => {
-      this.searchService.reindexAll().then(() => {
-        console.log('Test indicizzazione completato. Ora puoi rimuovere questo blocco.');
-      });
-    }, 5000); */
+    console.log('Init...');
   }
   ngOnInit() {
     //
@@ -311,8 +305,7 @@ async onTestSemanticSearch() {
     }
 
     const ids = rawResults.map(r => r.id);
-    
-    // ✅ CORRETTO: Carica i DOCUMENTI, non i file
+
     const documentDetails = await this.dbService.getDocumentsByIds(ids);
 
     console.log('4. Risultati documenti:', documentDetails);

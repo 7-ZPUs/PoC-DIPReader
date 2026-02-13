@@ -1,11 +1,23 @@
 import { Injectable } from '@angular/core';
-import { DatabaseService } from '../database-electron.service';
+import { DatabaseService } from './database-electron.service';
 import { SearchFilter, FilterOptionGroup } from '../models/search-filter';
 
 /**
  * Servizio per la gestione della ricerca e filtri
- * Centralizza la logica di ricerca, filtri e grouping delle opzioni
- * Utilizza Electron IPC per la ricerca semantica tramite il main process
+ * 
+ * RESPONSIBILITIES:
+ * - Semantic search (AI-powered search via embeddings)
+ * - Filter management (loading, grouping, applying filters)
+ * - Search query coordination (combining semantic + metadata filters)
+ * - Document indexing for semantic search
+ * - AI model initialization and state management
+ * 
+ * DEPENDENCIES:
+ * - DatabaseService: for executing queries
+ * - Uses Electron IPC for AI operations (main process)
+ * 
+ * NOTE: This service centralizes ALL search-related logic.
+ * Do not duplicate search logic in DatabaseService or other services.
  */
 @Injectable({ providedIn: 'root' })
 export class SearchService {
@@ -60,10 +72,6 @@ export class SearchService {
     }
   }
 
-  /**
-   * Re-indicizza tutti i documenti recuperandoli dal database
-   * e inviandoli al worker per l'indicizzazione semantica
-   */
   async reindexAll(): Promise<void> {
     if (!this.isAiReady) {
       console.error('Service: AI model not ready');

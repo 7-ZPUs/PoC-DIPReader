@@ -8,12 +8,20 @@ class DatabaseHandler {
   constructor() {
     this.db = null;
     this.currentDipUUID = null;
-    this.dbPath = path.join(app.getPath('userData'), 'databases');
+    this.dbPath = null; // Initialize later when app is ready
     this.vssEnabled = false; // Track if sqlite-vss is available
+  }
 
-    // Ensure database directory exists
-    if (!fs.existsSync(this.dbPath)) {
-      fs.mkdirSync(this.dbPath, { recursive: true });
+  /**
+   * Initialize database path - must be called after Electron app is ready
+   */
+  _ensureDbPath() {
+    if (!this.dbPath) {
+      this.dbPath = path.join(app.getPath('userData'), 'databases');
+      // Ensure database directory exists
+      if (!fs.existsSync(this.dbPath)) {
+        fs.mkdirSync(this.dbPath, { recursive: true });
+      }
     }
   }
 
@@ -21,6 +29,7 @@ class DatabaseHandler {
    * Open or create a database for a specific DIP
    */
   async openOrCreateDatabase(dipUUID) {
+    this._ensureDbPath(); // Ensure path is initialized
     const dbFileName = `${dipUUID}.sqlite3`;
     const fullPath = path.join(this.dbPath, dbFileName);
     const fileExists = fs.existsSync(fullPath);
@@ -126,10 +135,14 @@ class DatabaseHandler {
 
         this.db.prepare('DELETE FROM vss_documents WHERE rowid = ?').run(docId);
         this.db.prepare('INSERT INTO vss_documents(rowid, embedding) VALUES (?, ?)').run(docId, vectorJson);
+        
+        console.log(`[DB Handler] ✅ Saved vector for doc_id: ${docId} in vss_documents (${vectorArray.length} dimensions)`);
       } else {
         // Fallback: BLOB storage
         const buffer = Buffer.from(vector.buffer);
         this.db.prepare('INSERT OR REPLACE INTO document_vectors (doc_id, embedding) VALUES (?, ?)').run(docId, buffer);
+        
+        console.log(`[DB Handler] ✅ Saved vector for doc_id: ${docId} in document_vectors (BLOB fallback)`);
       }
 
       //console.log(`[DB Handler] Saved vector for doc_id: ${docId}`);
@@ -164,10 +177,19 @@ class DatabaseHandler {
     if (!this.db) return [];
 
     try {
+      // Debug: Check how many vectors exist
+      const vectorCount = this.vssEnabled 
+        ? this.db.prepare('SELECT COUNT(*) as count FROM vss_documents').get().count
+        : this.db.prepare('SELECT COUNT(*) as count FROM document_vectors').get().count;
+      
+      console.log(`[DB Handler] Searching among ${vectorCount} indexed vectors (VSS: ${this.vssEnabled})`);
+
       if (this.vssEnabled) {
         // Use optimized sqlite-vss search
         const vectorArray = Array.from(queryVector);
         const vectorJson = JSON.stringify(vectorArray);
+
+        console.log(`[DB Handler] Query vector length: ${vectorArray.length}, first 3 values:`, vectorArray.slice(0, 3));
 
         const results = this.db.prepare(`
                   SELECT rowid as id, distance
@@ -175,6 +197,11 @@ class DatabaseHandler {
                   WHERE vss_search(embedding, ?)
                   LIMIT ?
               `).all(vectorJson, limit);
+
+        console.log(`[DB Handler] sqlite-vss returned ${results.length} results`);
+        if (results.length > 0) {
+          console.log(`[DB Handler] Top result: id=${results[0].id}, distance=${results[0].distance}`);
+        }
 
         // Convert distance to similarity score (lower distance = higher similarity)
         return results.map(row => ({
@@ -316,6 +343,8 @@ class DatabaseHandler {
    * List all available databases
    */
   listDatabases() {
+    this._ensureDbPath(); // Ensure path is initialized
+    
     try {
       // Ensure directory exists
       if (!fs.existsSync(this.dbPath)) {

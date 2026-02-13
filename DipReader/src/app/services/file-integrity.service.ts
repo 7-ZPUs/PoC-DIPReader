@@ -1,17 +1,31 @@
 import { Injectable } from '@angular/core';
-import { DatabaseService } from '../database-electron.service';
+import { DatabaseService } from './database-electron.service';
 import { IntegrityCheckResult, SavedIntegrityStatus } from '../models/integrity-check';
 import { FileService } from './file.service';
+import { MetadataService } from './metadata.service';
 
 /**
  * Gestione della verifica d'integrità dei file
- * Centralizza la logica di calcolo hash, salvataggio e recupero dello stato
+ * 
+ * RESPONSIBILITIES:
+ * - File integrity verification (hash comparison)
+ * - SHA-256 hash calculation
+ * - Integrity result persistence
+ * - Integrity status retrieval
+ * 
+ * DEPENDENCIES:
+ * - DatabaseService: for saving/loading verification results
+ * - FileService: for physical file paths
+ * - MetadataService: for expected hash retrieval (NO direct metadata queries)
+ * 
+ * NOTE: Uses MetadataService for hash retrieval to avoid duplicate logic.
  */
 @Injectable({ providedIn: 'root' })
 export class FileIntegrityService {
   constructor(
     private dbService: DatabaseService,
-    private fileService: FileService
+    private fileService: FileService,
+    private metadataService: MetadataService
   ) {}
 
   /**
@@ -36,8 +50,8 @@ export class FileIntegrityService {
       throw new Error('Failed to read file');
     }
 
-    // Get expected hash from metadata
-    const expectedHash = await this.getExpectedHash(fileId);
+    // Get expected hash from metadata (using MetadataService for consistency)
+    const expectedHash = await this.metadataService.getExpectedHash(fileId);
     if (!expectedHash) {
       throw new Error('Hash not found in metadata');
     }
@@ -50,41 +64,6 @@ export class FileIntegrityService {
       calculatedHash,
       expectedHash
     };
-  }
-
-  /**
-   * Recupera l'hash atteso dai metadati del file
-   * Cerca prima a livello di file, poi a livello di documento
-   */
-  private async getExpectedHash(fileId: number): Promise<string | null> {
-    // First: look for Impronta associated with this specific file_id
-    const fileImprontaResult = await this.dbService.executeQuery<Array<{ meta_value: string }>>(
-      `SELECT meta_value FROM metadata WHERE meta_key = 'Impronta' AND file_id = ?`,
-      [fileId]
-    );
-    
-    if (fileImprontaResult?.length > 0) {
-      return fileImprontaResult[0].meta_value;
-    }
-
-    // Fallback: look for document-level Impronta
-    const fileRow = await this.dbService.executeQuery<Array<{ document_id: number }>>(
-      `SELECT document_id FROM file WHERE id = ?`, 
-      [fileId]
-    );
-    
-    if (fileRow?.length > 0) {
-      const docImprontaResult = await this.dbService.executeQuery<Array<{ meta_value: string }>>(
-        `SELECT meta_value FROM metadata WHERE meta_key = 'Impronta' AND document_id = ? AND file_id IS NULL`,
-        [fileRow[0].document_id]
-      );
-      
-      if (docImprontaResult?.length > 0) {
-        return docImprontaResult[0].meta_value;
-      }
-    }
-
-    return null;
   }
 
   async verifyFileHash(fileBuffer: ArrayBuffer, expectedHashBase64: string): Promise<IntegrityCheckResult> {

@@ -121,7 +121,7 @@ async function generateSemanticEmbeddings(db) {
             }
         }
         
-        console.log(`[Semantic] ✅ Semantic indexing completed: ${indexed}/${docs.length} documents indexed`);
+        console.log(`[Semantic] Semantic indexing completed: ${indexed}/${docs.length} documents indexed`);
         return { success: true, indexed, total: docs.length };
     } catch (error) {
         console.error('[Semantic] Error during semantic indexing:', error);
